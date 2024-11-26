@@ -18,7 +18,7 @@ def format_date(unix_time):
     return f"(Date: {datetime.utcfromtimestamp(unix_time).strftime('%Y-%m-%d')})"
 
 
-def get_raw_memory(user_id="testman1", start_date: int = None, end_date: int = None, limit: int = 30):
+def get_raw_memory(user_id="testman1", start_date: int = None, end_date: int = None, limit: int = 25):
     # 컬렉션 이름 설정
     collection_name = "CSD1"
 

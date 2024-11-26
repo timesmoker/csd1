@@ -25,7 +25,7 @@ LIGHT_SENSOR_PERIOD = 1
 
 # 환경 변수 로드
 load_dotenv()
-
+#region 프롬프트 설정
 #기본 프롬프트, 해당 프롬프트 밑에다가 추가로 스트링을 붙여서 최종 프롬프트 생성후 LLM에 질문하는 방식
 ai_prompt = SystemMessage(
     content=f"당신은 노인과 함께 살아가는 식물입니다. 당신은 완벽하진 않지만 장기적인 기억이 가능합니다."
@@ -38,6 +38,7 @@ quiz_prompt = SystemMessage(
         "당신은 노인과 함께 살아가는 식물입니다. 당신은 완벽하진 않지만 장기적인 기억이 가능합니다. "
         "노인과의 대화에서 제공된 과거 정보를 활용하여, 치매 예방을 위한 간단한 기억력 테스트를 만드세요. "
         "질문은 노인의 일상과 관련된 친근한 내용으로 구성되어야 하며 취향이나 개인적인 정보가 아닌 이전 대화에서 나왔던 '사실'만 을 바탕으로 만들어야 합니다."
+        "문제 이외의 정보에 대해서는 많이 언급하지 말아주세요."
         "3개의 문제를 만들어서 노인에게 제공하세요, 예시는 다음과 같습니다. 시간적으로 언제 일어났던 일인지 물어봐주세요."
         "ex1) 어제 무슨 요리를 했나요? ex2) 11/21일에는 어디에 다녀오셨죠? ex3) 2주전에 저와 음악에 대해 이야기하신게 기억 나시나요?"
         "ex4) 3주전에 타일러의 어떤 앨범을 들으셨다고 했나요? ex5) 어제 져녁에 게장을 먹은게 기억 나시나요?"
@@ -53,7 +54,7 @@ answer_prompt = SystemMessage(
         "만약 퀴즈를 3개중 3개 맞췄다면 '응답:::' 3개중 2개 맞췄다면 '응답::;', 1개 맞췄다면 '응답:;;' 0개 맞췄다면 '응답;;;' 이렇게 답해주세요."
     )
 )
-
+#endregion
 # 롱텀메모리 설정
 config = {
     # 임베디드 모델 설정 필요
@@ -91,8 +92,7 @@ short_term_memory = ConversationBufferMemory(
 # 스트리밍 콜백 핸들러 설정
 streaming_handler = StreamingStdOutCallbackHandler()
 
-
-# 하이 레벨 LLM 초기화 - 스트리밍 활성화
+#region 하이 레벨 LLM 초기화 - 스트리밍 활성화
 llm_high = ChatAnthropic(
     model="claude-3-5-sonnet-20240620",
     callbacks=[streaming_handler]  # 스트리밍 핸들러 추가
@@ -106,14 +106,14 @@ llm_low = ChatTogether(
     timeout=4,
     max_retries=2
 )
-
+#endregion
+#region 람다 함수 바인딩을 통한 툴 생성
 # 이하 툴 객체 생성
 analysis_tool = Tool(
     name="LLM Analysis Tool",
     func=lambda user_input: tools.analyze_with_llm_chain(user_input, llm=llm_low),  # 람다 함수로 바인딩
     description="analyse and decide whether use long-term memory or not."
 )
-# analyze_with_llm 함수에 llm을 바인딩하여 전달
 
 
 short_term_chat_tool = Tool(
@@ -153,6 +153,8 @@ on_off_tool = Tool(
 )
 
 
+#endregion
+
 
 def wait_for_valid_input():
     print("대화는 현재 종료 상태입니다. (다시 시작하려면 '시작'이라고 입력하세요)")
@@ -166,8 +168,17 @@ def wait_for_valid_input():
         else:
             print("명령어를 이해하지 못했습니다. '시작' 또는 '종료'를 입력하세요.")
 
-def quiz_session():
-    print("퀴즈 시작")
+def quiz_session(user_input):
+    print("퀴즈 생성을 시작합니다.")
+
+    #ai_prompt, llm, st_memory, user_id
+    final_prompt = tools.quiz_maker(USER_ID,quiz_prompt)
+    if final_prompt is not None:
+        print("퀴즈 생성 완료")
+        tools.get_llm_quiz_response_tts(user_input,final_prompt,llm_high,short_term_memory,USER_ID)
+    else:
+        print("퀴즈 생성 실패")
+        return False
 
 
 def conversation(sensor: Sensor):
@@ -205,10 +216,10 @@ def conversation(sensor: Sensor):
                 # LLM 응답 생성
                 response = get_llm_response_tts_tool.func(long_term_memory_response)
 
-            elif result["type"] == "quiz":
+            elif result["type"] == "test":
                 print("퀴즈 대화")
                 # 퀴즈 대화
-                response = get_llm_response_tts_tool.func(user_input)
+                quiz_session(user_input)
 
             elif result["type"] == "date":
                 print("단일 날짜 기반 대화")

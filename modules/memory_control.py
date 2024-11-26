@@ -2,6 +2,8 @@ from datetime import datetime
 from mem0 import Memory
 import asyncio
 
+MEMORY_LIMIT = 25
+
 
 # 사실 여러개 붙여서 불러옴 걍 주면 알아서 시스템 프롬프트에 붙여서 쓸 것
 def retrieve_context(memory: Memory, query: str, user_id: str, start_date: int = None, end_date: int = None):
@@ -14,7 +16,7 @@ def retrieve_context(memory: Memory, query: str, user_id: str, start_date: int =
             }
         }
         print(filters)
-        memories = memory.search(query, user_id=user_id, filters=filters)
+        memories = memory.search(query, user_id=user_id,limit=MEMORY_LIMIT, filters=filters)
     elif start_date is not None:
         end_date = start_date + 86400
         filters = {
@@ -24,9 +26,9 @@ def retrieve_context(memory: Memory, query: str, user_id: str, start_date: int =
             }
         }
         print(filters)
-        memories = memory.search(query, user_id=user_id, filters=filters)
+        memories = memory.search(query, user_id=user_id,limit=MEMORY_LIMIT, filters=filters)
     else:
-        memories = memory.search(query, user_id=user_id)
+        memories = memory.search(query, user_id=user_id,limit=MEMORY_LIMIT)
 
     serialized_memories = ' '.join(
         f"{mem['memory']} (Date: {datetime.utcfromtimestamp(mem['created_at']).strftime('%Y-%m-%d')})"

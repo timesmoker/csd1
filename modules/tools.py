@@ -15,8 +15,7 @@ from queue import Queue
 import re
 import time
 import asyncio
-
-import raw_vector_control
+from modules import raw_vector_control as rvc
 
 load_dotenv()
 
@@ -39,10 +38,10 @@ analysis_prompt = PromptTemplate(
         "**The priority of the rules is applied from top to bottom. Do not add explanations. Only return the result.**\n\n"
         "**Rules (Priority: Top to Bottom):**\n"
         "0. If the user_input is about quitting or stopping the conversation, return 'quit'.\n"
-        "1. If the user_input is requesting quiz questions, return 'quiz'.\n"
+        "1. If the user_input is requesting quiz or test questions, return 'test'.\n"
         "   Examples:\n"
-        "     ex1) Ask me a question. -> quiz\n"
-        "     ex2) 치매테스트 하자 -> quiz\n"
+        "     ex1) Ask me a question. -> test\n"
+        "     ex2) 치매테스트 하자 -> test\n"
         "2. If the user_input requests information about a specific time period, including events or activities within that period, return the result in the format "
         "'date_YYYY/MM/DD-YYYY/MM/DD'.\n"
         "   Examples:\n"
@@ -96,13 +95,10 @@ def on_off_check_tool(user_input, llm):
     else:
         return "idle"
 
-
 def analyze_with_llm_chain(user_input, llm):
     try:
-        # 현재 날짜를 생성
+        # 현재 날짜 생성
         current_date = datetime.now().strftime("%Y/%m/%d")
-
-        # Prompt 생성
         formatted_prompt = analysis_prompt.format_prompt(
             current_date=current_date,
             user_input=user_input
@@ -110,8 +106,6 @@ def analyze_with_llm_chain(user_input, llm):
 
         # LLM 호출
         result = llm.invoke(formatted_prompt)
-
-        # LLM 결과 처리
         response = result.content.strip()
         print(f"LLM 결과: {response}")
 
@@ -119,54 +113,59 @@ def analyze_with_llm_chain(user_input, llm):
         patterns = {
             "date_range": r"date_(\d{4}/\d{2}/\d{2})-(\d{4}/\d{2}/\d{2})",
             "date": r"date_(\d{4}/\d{2}/\d{2})",
-            "recall": r"^recall$",
-            "normal": r"^normal$",
         }
+        simple_patterns = ["recall", "normal", "quit", "test"]
 
-        # 날짜 범위
+        # 날짜 범위 처리
         if match := re.search(patterns["date_range"], response):
             start_date_str, end_date_str = match.groups()
-
-            # 시작 날짜 UNIX 타임스탬프 계산
             start_date = datetime.strptime(start_date_str, "%Y/%m/%d")
-            start_unix_time = calendar.timegm(start_date.timetuple())  # UTC 기준 타임스탬프
-
-            # 끝 날짜에 +1일 추가 후 UNIX 타임스탬프 계산
             end_date = datetime.strptime(end_date_str, "%Y/%m/%d") + timedelta(days=1)
-            end_unix_time = calendar.timegm(end_date.timetuple())  # UTC 기준 타임스탬프
-
             return {
                 "type": "date_range",
-                "start_timestamp": start_unix_time,
-                "end_timestamp": end_unix_time,
+                "start_timestamp": int(start_date.timestamp()),
+                "end_timestamp": int(end_date.timestamp()),
             }
 
-        # 단일 날짜
+        # 단일 날짜 처리
         elif match := re.search(patterns["date"], response):
             date_str = match.group(1)
-            unix_time = int(time.mktime(datetime.strptime(date_str, "%Y/%m/%d").timetuple()))
+            unix_time = int(datetime.strptime(date_str, "%Y/%m/%d").timestamp())
             return {"type": "date", "timestamp": unix_time}
 
-        # 'recall' 응답
-        elif re.search(patterns["recall"], response):
-            return {"type": "recall"}
+        # 간단한 패턴 처리
+        for pattern in simple_patterns:
+            if re.search(f"^{pattern}$", response):
+                return {"type": pattern}
 
-        # 'normal' 응답
-        elif re.search(patterns["normal"], response):
-            return {"type": "normal"}
-
-        # 'quit' 응답
-        elif re.search(patterns["quit"], response):
-            return {"type": "quit"}
-        else:
-            print("경고: 예상되지 않은 형식의 응답")
-            return {"type": "error", "message": "unexpected_format"}
+        # 예상치 못한 응답
+        print(f"경고: 예상되지 않은 응답 형식 - '{response}'")
+        return {"type": "error", "message": "unexpected_format"}
 
     except Exception as e:
-        # 에러 처리 및 디버깅 로깅
         print(f"오류 발생: {e}")
         return {"type": "error", "message": str(e)}
 
+
+
+def quiz_maker(user_id, prompt):
+    # filtered_points를 가져옵니다.
+    filtered_points = rvc.get_raw_memory(user_id=user_id)
+
+    # filtered_points가 비어 있으면 None 반환
+    if len(filtered_points) == 0:
+        return None
+
+    # filtered_points를 문자열로 변환하여 추가
+    memory_str = " ".join(
+        f"{point['data']} {point['created_at']}"
+        for point in filtered_points
+    )
+
+    # prompt의 content에 붙이기
+    prompt.content = prompt.content + " " + memory_str
+
+    return prompt
 
 #  단기 메모리 기반 단순 대화 기능 (안씀)
 def get_short_term_chat(input_msg: HumanMessage, llm, memory):
@@ -239,17 +238,19 @@ def get_llm_response(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memory, u
     st_memory.chat_memory.add_message(msg_with_lt_memory[0])
     st_memory.chat_memory.add_message(AIMessage(content=response.content))
 
-    # 장기 메모리 저장
-    asyncio.create_task(memory_control.save_interaction(
-        lt_memory, user_id, msg_with_lt_memory[0].content, full_response
-    ))
+
+    store_memory_thread = threading.Thread(
+        target=memory_control.save_interaction,
+        args=(lt_memory, user_id, msg_with_lt_memory[0].content, response)
+    )
+    store_memory_thread.start()
 
     return response.content
 
 
 # 스트리밍 이용해서 TTS 답변 ,input_with_all 형태     : ai프롬프트 | 이전 메세지 | 사용자 요청| 기억(있으면)
 #                        msg_with_lt_memory 형태 : 사용자 요청 | 기억(있으면)
-def get_llm_response_tts(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memory, user_id, loop=None):
+def get_llm_response_tts(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memory, user_id):
     previous_messages = st_memory.chat_memory.messages
 
     if isinstance(msg_with_lt_memory[-1], SystemMessage):
@@ -270,6 +271,9 @@ def get_llm_response_tts(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memor
 
     input_with_all = cleaned_messages
 
+
+    print(input_with_all)
+
     # 스트리밍 데이터 처리 및 TTS 실행
     full_response = process_stream_with_tts(llm, input_with_all)
 
@@ -288,6 +292,26 @@ def get_llm_response_tts(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memor
 
     return full_response
 
+
+def get_llm_quiz_response_tts(user_input,ai_prompt, llm, st_memory, user_id):
+    previous_messages = st_memory.chat_memory.messages
+
+
+    tmpmsg = HumanMessage(content=user_input)
+
+    input_with_all = [ai_prompt] + previous_messages + [tmpmsg]
+
+
+    # 스트리밍 데이터 처리 및 TTS 실행
+    full_response = process_stream_with_tts(llm, input_with_all)
+
+    if full_response is None:
+        return None
+
+    # 사용자 메시지와 LLM 응답을 단기 메모리에 추가
+    st_memory.chat_memory.add_message(AIMessage(content=full_response))
+
+    return full_response
 
 
 # TTS 처리, 여기에 invoke 들어가있음, 나중에 기회되면 TTS부분 모듈화 해야함

@@ -16,6 +16,8 @@ import re
 import time
 import asyncio
 
+import raw_vector_control
+
 load_dotenv()
 
 on_off_prompt = PromptTemplate(
@@ -36,24 +38,26 @@ analysis_prompt = PromptTemplate(
         "Analyze the input according to the following rules and return the result in the exact format. "
         "**The priority of the rules is applied from top to bottom. Do not add explanations. Only return the result.**\n\n"
         "**Rules (Priority: Top to Bottom):**\n"
-        "0. If input is requesting quiz questions, return 'quiz'.\n"
+        "0. If the user_input is about quitting or stopping the conversation, return 'quit'.\n"
+        "1. If the user_input is requesting quiz questions, return 'quiz'.\n"
         "   Examples:\n"
         "     ex1) Ask me a question. -> quiz\n"
         "     ex2) 치매테스트 하자 -> quiz\n"
-        "1. If the user_input requests information about a specific time period, including events or activities within that period, return the result in the format "
+        "2. If the user_input requests information about a specific time period, including events or activities within that period, return the result in the format "
         "'date_YYYY/MM/DD-YYYY/MM/DD'.\n"
         "   Examples:\n"
         "     ex1) What did I eat last week? -> date_2024/11/15-2024/11/21\n"
         "     ex2) Did I go to a park last month? -> date_2024/10/01-2024/10/31\n"
         "     ex3) What places did I visit this year? -> date_2024/01/01-2024/12/31\n"
         "     ex4) Did I travel last summer? -> date_2024/06/01-2024/08/31\n\n"
-        "2. If the user_input requests information about a specific date, return the result in the format 'date_YYYY/MM/DD'.\n"
+        "     ex5) What did I said today? -> date_2024/11/19-2024/11/20\n"
+        "3. If the user_input requests information about a specific date, return the result in the format 'date_YYYY/MM/DD'.\n"
         "   Examples:\n"
         "     ex1) What did I do on 12/10? -> date_2024/12/10\n"
         "     ex2) Did I eat sushi yesterday? -> date_2024/11/20\n"
         "     ex3) Did I meet someone on my birthday? -> date_2024/03/15\n"
         "     ex4) Did I visit the museum last Friday? -> date_2024/11/15\n\n"
-        "3. If the input satisfies any of the following conditions, return 'recall':\n"
+        "4. If the input satisfies any of the following conditions, return 'recall':\n"
         "   - A question about the user's name, age, or personal information.\n"
         "   - A question about past events or activities without specifying a time.\n"
         "   - A question requiring remembering specific events or providing an answer based on stored information.\n"
@@ -62,7 +66,7 @@ analysis_prompt = PromptTemplate(
         "     ex2) Did I submit my assignment? -> recall\n"
         "     ex3) What hobbies did I enjoy as a kid? -> recall\n"
         "     ex4) Do I like spicy food? -> recall\n\n"
-        "4. For all other cases, return 'normal'.\n"
+        "5. For all other cases, return 'normal'.\n"
         "   Examples:\n"
         "     ex1) What is the weather like today? -> normal\n"
         "     ex2) Tell me a joke. -> normal\n"
@@ -151,7 +155,9 @@ def analyze_with_llm_chain(user_input, llm):
         elif re.search(patterns["normal"], response):
             return {"type": "normal"}
 
-        # 예상하지 못한 응답
+        # 'quit' 응답
+        elif re.search(patterns["quit"], response):
+            return {"type": "quit"}
         else:
             print("경고: 예상되지 않은 형식의 응답")
             return {"type": "error", "message": "unexpected_format"}
@@ -194,6 +200,7 @@ def get_long_term_memory(input_str: str, lt_memory, user_id, start_date: int = N
 
     # 최종 응답 반환
     return msg_with_lt_memory
+
 
 def attach_feeling(input_str: str, feeling: str):
     return input_str + " " + feeling
@@ -326,7 +333,7 @@ def process_stream_with_tts(llm, input_with_all, lang="ko"):
                 print(f"오디오 처리 중 오류 발생: {e}")
             finally:
                 is_playing = False  # 재생 종료
-                print(f"!!!!!\n재생 완료: {sentence.strip()}!!!!!!!!1\n")
+                print(f"\n!!!!!재생 완료: {sentence.strip()}!!!!!!!!1\n")
                 sentence_queue.task_done()
 
     # 오디오 재생 스레드 시작

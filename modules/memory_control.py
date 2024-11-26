@@ -6,9 +6,7 @@ import asyncio
 # 사실 여러개 붙여서 불러옴 걍 주면 알아서 시스템 프롬프트에 붙여서 쓸 것
 def retrieve_context(memory: Memory, query: str, user_id: str, start_date: int = None, end_date: int = None):
 
-
     if end_date is not None:
-        print("날짜 범위 기반 대화")
         filters = {
             "created_at": {
                 "gte": start_date,  # 시작 날짜
@@ -18,7 +16,6 @@ def retrieve_context(memory: Memory, query: str, user_id: str, start_date: int =
         print(filters)
         memories = memory.search(query, user_id=user_id, filters=filters)
     elif start_date is not None:
-        print("단일 날짜 기반 대화")
         end_date = start_date + 86400
         filters = {
             "created_at": {
@@ -29,7 +26,6 @@ def retrieve_context(memory: Memory, query: str, user_id: str, start_date: int =
         print(filters)
         memories = memory.search(query, user_id=user_id, filters=filters)
     else:
-        print("일반 과거 대화")
         memories = memory.search(query, user_id=user_id)
 
     serialized_memories = ' '.join(

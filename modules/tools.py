@@ -16,6 +16,7 @@ import re
 import time
 import asyncio
 from modules import raw_vector_control as rvc
+from modules import server_request as sr
 
 load_dotenv()
 
@@ -148,7 +149,7 @@ def analyze_with_llm_chain(user_input, llm):
 
 
 
-def quiz_maker(user_id, prompt):
+def raw_memory_retrieve(user_id):
     # filtered_points를 가져옵니다.
     filtered_points = rvc.get_raw_memory(user_id=user_id)
 
@@ -162,10 +163,7 @@ def quiz_maker(user_id, prompt):
         for point in filtered_points
     )
 
-    # prompt의 content에 붙이기
-    prompt.content = prompt.content + " " + memory_str
-
-    return prompt
+    return memory_str
 
 #  단기 메모리 기반 단순 대화 기능 (안씀)
 def get_short_term_chat(input_msg: HumanMessage, llm, memory):
@@ -293,7 +291,7 @@ def get_llm_response_tts(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memor
     return full_response
 
 
-def get_llm_quiz_response_tts(user_input,ai_prompt, llm, st_memory, user_id):
+def get_llm_quiz_response_tts(user_input,ai_prompt, llm, st_memory):
     previous_messages = st_memory.chat_memory.messages
 
 
@@ -309,6 +307,7 @@ def get_llm_quiz_response_tts(user_input,ai_prompt, llm, st_memory, user_id):
         return None
 
     # 사용자 메시지와 LLM 응답을 단기 메모리에 추가
+    st_memory.chat_memory.add_message(tmpmsg)
     st_memory.chat_memory.add_message(AIMessage(content=full_response))
 
     return full_response
@@ -430,6 +429,16 @@ def process_stream_with_tts(llm, input_with_all, lang="ko"):
         sentence_queue.join()  # 모든 문장이 처리될 때까지 대기
 
     return full_response
+
+
+def calculate_score(input_string):
+    # Use regex to find all ':' and ';'
+    colons = re.findall(r':', input_string)
+    semicolons = re.findall(r';', input_string)
+
+    # Calculate the score
+    score = len(colons) * 10 - len(semicolons) * 10
+    return score
 
 
 def speak_text(text, lang="ko"):

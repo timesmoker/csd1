@@ -28,14 +28,14 @@ load_dotenv()
 #region 프롬프트 설정
 #기본 프롬프트, 해당 프롬프트 밑에다가 추가로 스트링을 붙여서 최종 프롬프트 생성후 LLM에 질문하는 방식
 ai_prompt = SystemMessage(
-    content=f"당신은 노인과 함께 살아가는 식물입니다. 당신은 완벽하진 않지만 장기적인 기억이 가능합니다."
+    content=f"당신은 노인과 함께 살아가는 식물입니다. 당신은 완벽하진 않지만 장기적인 기억이 가능합니다. 허나 이 사실에 대해 굳이 언급하지는 마세요."
             "노인에게 최대한 따뜻한 대화를 제공해주세요."
             "설명보다는 대화를 통해 노인과 소통해주세요."
 )
 
 quiz_prompt = SystemMessage(
     content=(
-        "당신은 노인과 함께 살아가는 식물입니다. 당신은 완벽하진 않지만 장기적인 기억이 가능합니다. "
+        "당신은 노인과 함께 살아가는 식물입니다. 당신은 완벽하진 않지만 장기적인 기억이 가능합니다. 허나 이 사실에 대해 굳이 언급하지는 마세요."
         "노인과의 대화에서 제공된 과거 정보를 활용하여, 치매 예방을 위한 간단한 기억력 테스트를 만드세요. "
         "질문은 노인의 일상과 관련된 친근한 내용으로 구성되어야 하며 취향이나 개인적인 정보가 아닌 이전 대화에서 나왔던 '사실'만 을 바탕으로 만들어야 합니다."
         "문제 이외의 정보에 대해서는 많이 언급하지 말아주세요."
@@ -48,10 +48,11 @@ quiz_prompt = SystemMessage(
 
 answer_prompt = SystemMessage(
     content=(
-        "당신은 노인과 함께 살아가는 식물입니다. 당신은 완벽하진 않지만 장기적인 기억이 가능합니다. "
+        "당신은 노인과 함께 살아가는 식물입니다. 당신은 완벽하진 않지만 장기적인 기억이 가능합니다. 허나 이 사실에 대해 굳이 언급하지는 마세요."
         "당신은 노인에게 이전 대화에서 제공된 퀴즈의 정답을 아래 제공된 기억들을 통해 채점 하고, 노인이 제공한 답변을 바탕으로 피드백을 제공하세요."
         "마지막으로 몇개의 퀴즈를 맞췄는지 응답 마지막에 ':'과 ';' 개수를 통해 알려주세요."
-        "만약 퀴즈를 3개중 3개 맞췄다면 '응답:::' 3개중 2개 맞췄다면 '응답::;', 1개 맞췄다면 '응답:;;' 0개 맞췄다면 '응답;;;' 이렇게 답해주세요."
+        "예를들어 당신(AI)의 대답이 '응답'이라면 아래를 참고해서 답해주세요." 
+        "만약 퀴즈를 3개중 3개 맞췄다면 '응답 :::' 3개중 2개 맞췄다면 '응답::;', 1개 맞췄다면 '응답:;;' 0개 맞췄다면 '응답;;;' 이렇게 답해주세요."
     )
 )
 #endregion
@@ -157,7 +158,7 @@ on_off_tool = Tool(
 
 
 def wait_for_valid_input():
-    print("대화는 현재 종료 상태입니다. (다시 시작하려면 '시작'이라고 입력하세요)")
+    print("대화는 현재 종료 상태입니다.")
     while True:
         user_input = on_off_tool.func(input("입력: "))
         if "on" in user_input:
@@ -171,15 +172,28 @@ def wait_for_valid_input():
 def quiz_session(user_input):
     print("퀴즈 생성을 시작합니다.")
 
-    #ai_prompt, llm, st_memory, user_id
-    final_prompt = tools.quiz_maker(USER_ID,quiz_prompt)
+    raw_memories = tools.raw_memory_retrieve(USER_ID)
+
+    final_prompt = SystemMessage(content=quiz_prompt.content+ raw_memories)
+
     if final_prompt is not None:
         print("퀴즈 생성 완료")
-        tools.get_llm_quiz_response_tts(user_input,final_prompt,llm_high,short_term_memory,USER_ID)
+        tools.get_llm_quiz_response_tts(user_input,final_prompt,llm_high,short_term_memory)
+        answer_session(raw_memories)
+
     else:
         print("퀴즈 생성 실패")
         return False
 
+def answer_session(memory_str : str):
+
+    print("퀴즈 채점을 시작합니다.")
+    user_input = input("입력: ")
+    final_prompt = SystemMessage(content=answer_prompt.content+memory_str)
+
+    response = tools.get_llm_quiz_response_tts(user_input,final_prompt,llm_high,short_term_memory)
+
+    print(tools.calculate_score(response))
 
 def conversation(sensor: Sensor):
 
@@ -187,8 +201,8 @@ def conversation(sensor: Sensor):
 
     while True:
         if is_active:
-           # print("\n음성 입력을 시작합니다... (종료하려면 '종료'라고 말하세요)")
-           # user_input = recognize_speech(device_index=3, volume_threshold=3, no_sound_limit=5, language="ko-KR")
+            # print("\n음성 입력을 시작합니다... (종료하려면 '종료'라고 말하세요)")
+            # user_input = recognize_speech(device_index=3, volume_threshold=3, no_sound_limit=5, language="ko-KR")
 
             user_input = input("입력: ")
 

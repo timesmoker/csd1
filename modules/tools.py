@@ -312,6 +312,28 @@ def get_llm_quiz_response_tts(user_input,ai_prompt, llm, st_memory):
 
     return full_response
 
+def get_llm_quiz_response(user_input,ai_prompt, llm, st_memory):
+    previous_messages = st_memory.chat_memory.messages
+
+
+    tmpmsg = HumanMessage(content=user_input)
+
+    input_with_all = [ai_prompt] + previous_messages + [tmpmsg]
+
+
+    # 스트리밍 데이터 처리 및 TTS 실행
+    full_response = llm.invoke( input_with_all).content
+
+    if full_response is None:
+        return None
+
+    print(full_response)
+
+    # 사용자 메시지와 LLM 응답을 단기 메모리에 추가
+    st_memory.chat_memory.add_message(tmpmsg)
+    st_memory.chat_memory.add_message(AIMessage(content=full_response))
+
+    return full_response
 
 # TTS 처리, 여기에 invoke 들어가있음, 나중에 기회되면 TTS부분 모듈화 해야함
 def process_stream_with_tts(llm, input_with_all, lang="ko"):

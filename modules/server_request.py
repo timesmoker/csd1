@@ -6,6 +6,8 @@ base_url = "http://52.78.34.60:5986"  # Flask 서버 주소 입력 (IP 또는 �
 
 def update_user_score(username, score_delta):
     score = get_user_data(username)["data"]["total_score"]
+
+
     updated_score = score + score_delta
     if updated_score < 0:
         updated_score = 0
@@ -25,6 +27,7 @@ def get_user_data(username):
             return response.json()
         else:
             print("GET 요청 실패:", response.status_code)
+            return response.status_code
     except requests.exceptions.RequestException as e:
         print("GET 요청 중 오류 발생:", e)
 
@@ -62,7 +65,3 @@ def add_user(username, new_user_data):
             print("POST 요청 실패:", response.status_code)
     except requests.exceptions.RequestException as e:
         print("POST 요청 중 오류 발생:", e)
-
-get_user_data("alice")
-update_user_score("alice", 10)
-get_user_data("alice")

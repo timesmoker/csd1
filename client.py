@@ -12,7 +12,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.callbacks import StreamingStdOutCallbackHandler
 from langchain.tools import Tool
 
-from modules import tools
+from modules import tools, server_request
 from modules.tools import speak_text
 from sensor_class import Sensor
 from light import read_light_async
@@ -178,7 +178,7 @@ def quiz_session(user_input):
 
     if final_prompt is not None:
         print("퀴즈 생성 완료")
-        tools.get_llm_quiz_response_tts(user_input,final_prompt,llm_high,short_term_memory)
+        tools.get_llm_quiz_response(user_input,final_prompt,llm_high,short_term_memory)
         answer_session(raw_memories)
 
     else:
@@ -191,8 +191,8 @@ def answer_session(memory_str : str):
     user_input = input("입력: ")
     final_prompt = SystemMessage(content=answer_prompt.content+memory_str)
 
-    response = tools.get_llm_quiz_response_tts(user_input,final_prompt,llm_high,short_term_memory)
-
+    response = tools.get_llm_quiz_response(user_input,final_prompt,llm_high,short_term_memory)
+    server_request.update_user_score(USER_ID, tools.calculate_score(response))
     print(tools.calculate_score(response))
 
 def conversation(sensor: Sensor):
@@ -228,7 +228,7 @@ def conversation(sensor: Sensor):
                     end_date=end_timestamp
                 )
                 # LLM 응답 생성
-                response = get_llm_response_tts_tool.func(long_term_memory_response)
+                response = get_llm_response_tool.func(long_term_memory_response)
 
             elif result["type"] == "test":
                 print("퀴즈 대화")
@@ -245,20 +245,20 @@ def conversation(sensor: Sensor):
                     start_date=timestamp
                 )
                 # LLM 응답 생성
-                response = get_llm_response_tts_tool.func(long_term_memory_response)
+                response = get_llm_response_tool.func(long_term_memory_response)
 
             elif result["type"] == "recall":
                 print("과거 대화")
                 # 장기 기억 조회 (특정 날짜 정보 없이)
                 long_term_memory_response = retrieve_long_term_memory_tool.func(user_input=user_input)
                 # LLM 응답 생성
-                response = get_llm_response_tts_tool.func(long_term_memory_response)
+                response = get_llm_response_tool.func(long_term_memory_response)
 
             else:  # "normal"
                 print("일반 대화")
                 # 단기 기억 대화 처리
                 user_message = [HumanMessage(content=user_input)]
-                response = get_llm_response_tts_tool.func(user_message)
+                response = get_llm_response_tool.func(user_message)
 
 # 센서 작업을 주기적으로 실행하는 비동기 함수 이미 있는데 왜 또 만들었냐면, 여기다가 읽기 주기 넣는게 좋은 코드니까.
 # 나중에 토양센서도 이렇게 추가하면 됨

@@ -28,9 +28,20 @@ load_dotenv()
 #region 프롬프트 설정
 #기본 프롬프트, 해당 프롬프트 밑에다가 추가로 스트링을 붙여서 최종 프롬프트 생성후 LLM에 질문하는 방식
 ai_prompt = SystemMessage(
-    content=f"당신은 노인과 함께 살아가는 식물입니다. 당신은 완벽하진 않지만 장기적인 기억이 가능합니다. 허나 이 사실에 대해 굳이 언급하지는 마세요."
+    content=(
+            "당신은 노인과 함께 살아가는 식물입니다. 당신은 완벽하진 않지만 장기적인 기억이 가능합니다. 허나 이 사실에 대해 굳이 언급하지는 마세요."
             "노인에게 최대한 따뜻한 대화를 제공해주세요."
             "설명보다는 대화를 통해 노인과 소통해주세요."
+            "만약 현재 대화중인 특별한 주제가 없다면, 다음 예시와 비슷한 일상적인 질문을 포함해서 답변 해주세요."
+            "단 시간상으로 과거에 대한 질문만 제공하세요."
+            "ex1) 아침에 일어나셔서 제일 먼저 하셨던 일이 무엇이었나요? ex2) 혹시 오늘 나갔다 오셨나요? ex3) 저녁은 언제 드셨나요?"
+            
+            "현재 대화중인 주제에 대한 질문이 있는경우 가능하다면 2,3번에 1번 꼴로 다음과 같은 간단한 조건을 만족하는 질문을 포함해서 답변을 해주세요. 허나 이것은 필수가 아닙니다."
+            "질문생성이 어렵다면 질문을 생성하지 않아도 됩니다"
+            "조건 1. 시간(언제), 공간(어디서), 인물(누구와), 동기(왜) , 대상(무엇을) 중 하나를 포함하여 질문을 만들어주세요."
+            "만약 응답에 질문이 포함되어 있다면, 응답 마지막에 ';' 을 붙여주세요."            
+            "예를들어 당신(AI)의 대답이 '응답'이라면 '응답;'이라고 답변해주세요."
+             )
 )
 
 quiz_prompt = SystemMessage(
@@ -38,10 +49,11 @@ quiz_prompt = SystemMessage(
         "당신은 노인과 함께 살아가는 식물입니다. 당신은 완벽하진 않지만 장기적인 기억이 가능합니다. 허나 이 사실에 대해 굳이 언급하지는 마세요."
         "노인과의 대화에서 제공된 과거 정보를 활용하여, 치매 예방을 위한 간단한 기억력 테스트를 만드세요. "
         "질문은 노인의 일상과 관련된 친근한 내용으로 구성되어야 하며 취향이나 개인적인 정보가 아닌 이전 대화에서 나왔던 '사실'만 을 바탕으로 만들어야 합니다."
-        "문제 이외의 정보에 대해서는 많이 언급하지 말아주세요."
+        "문제 이외의 정보에 대해서는 많이 언급하지 마세요."
         "3개의 문제를 만들어서 노인에게 제공하세요, 예시는 다음과 같습니다. 시간적으로 언제 일어났던 일인지 물어봐주세요."
-        "ex1) 어제 무슨 요리를 했나요? ex2) 11/21일에는 어디에 다녀오셨죠? ex3) 2주전에 저와 음악에 대해 이야기하신게 기억 나시나요?"
-        "ex4) 3주전에 타일러의 어떤 앨범을 들으셨다고 했나요? ex5) 어제 져녁에 게장을 먹은게 기억 나시나요?"
+        "시간(언제), 공간(어디서), 인물(누구와), 동기(왜) , 대상(무엇을) 중 하나를 포함하여 질문을 만들어주세요."
+        "ex1) 어제 무슨 요리를 했나요? ex2) 11/21일에는 어디에 다녀오셨죠? ex3) 3일전에 타일러의 어떤 앨범을 들으셨다고 했나요?"
+        "ex4) 오늘 누구와 바둑을 두셨나요? ex5) 이틀전에 무엇을 하러 나갔다 오셨나요?"
         "장기 기억 내용은 다음과 같습니다."
     )
 )
@@ -55,6 +67,18 @@ answer_prompt = SystemMessage(
         "만약 퀴즈를 3개중 3개 맞췄다면 '응답 :::' 3개중 2개 맞췄다면 '응답::;', 1개 맞췄다면 '응답:;;' 0개 맞췄다면 '응답;;;' 이렇게 답해주세요."
     )
 )
+
+
+check_episodic_memory = SystemMessage(
+    content=(
+        "제공된 질문과 대답에서 episodic memory를 얼마나 제대로 응답하였는지 채점해 주세요."
+        "episodic memory는 시간적 맥락(언제), 공간적 맥락(어디서), 그리고 누구와 함께 했는지, 왜 그 사건이 발생했는지(목적이나 이유)가 포함됩니다."
+        "모든 항목을 전부 포함할 필요는 없습니다. 질문에서 언급된 항목에 대해서만 채점해주세요."
+        "완벽하게 대답하였다면 'perfect', 부분적으로 대답하였다면 'partail', 제대로된 대답이 아니라면 'wrong'을 응답해주세요."
+        )
+)
+
+
 #endregion
 # 롱텀메모리 설정
 config = {
@@ -195,8 +219,20 @@ def answer_session(memory_str : str):
     server_request.update_user_score(USER_ID, tools.calculate_score(response))
     print(tools.calculate_score(response))
 
+def episodic_memory_checker(task_queue):
+    while True:
+        task = task_queue.get()
+        if task is None:  # 종료 신호
+            print("Worker shutting down.")
+            break
+        print("Checking episodic memory...")
+        tools.check_episodic_memory(llm_high,check_episodic_memory,task,short_term_memory)
+        task_queue.task_done()
+
 def conversation(sensor: Sensor):
 
+
+    is_answer_of_question = False
     is_active = True  # 활동 상태 플래그
 
     while True:
@@ -207,6 +243,10 @@ def conversation(sensor: Sensor):
             user_input = input("입력: ")
 
             print("입력된 질문:", user_input)    
+
+            if is_answer_of_question:
+                response = tools.get_llm_quiz_response(user_input,check_episodic_memory,llm_high,short_term_memory)
+                is_answer_of_question = False
 
             # 분석 툴 실행 (long-term memory 또는 short-term memory 선택)
             result = analysis_tool.func(user_input)  # analyze_with_llm_tool 함수 실행

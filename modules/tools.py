@@ -205,6 +205,7 @@ def attach_feeling(input_str: str, feeling: str):
 
 # 대화 처리 (장기메모리 관련 없이 이거에서 처리, 대화후 장기메모리 저장)
 def get_llm_response(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memory, user_id):
+
     previous_messages = st_memory.chat_memory.messages
 
     # SystemMessage 처리
@@ -214,6 +215,10 @@ def get_llm_response(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memory, u
         )
     else:
         final_system_message = SystemMessage(content=ai_prompt.content)
+
+    current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+
+    final_system_message.content = "Current time is " + current_time + " " + final_system_message.content
 
     # 모든 메시지를 통합
     input_with_all = [final_system_message] + previous_messages + [msg_with_lt_memory[0]]
@@ -243,6 +248,7 @@ def get_llm_response(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memory, u
     )
     store_memory_thread.start()
 
+    print("응답:", response.content)
     return response.content
 
 
@@ -258,7 +264,12 @@ def get_llm_response_tts(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memor
     else:
         final_system_message = SystemMessage(content=ai_prompt.content)
 
+    current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+
+    final_system_message.content = "Current time is " + current_time + " " + final_system_message.content
+
     input_with_all = [final_system_message] + previous_messages + [msg_with_lt_memory[0]]
+
 
     cleaned_messages = []
     for message in input_with_all:
@@ -334,6 +345,16 @@ def get_llm_quiz_response(user_input,ai_prompt, llm, st_memory):
     st_memory.chat_memory.add_message(AIMessage(content=full_response))
 
     return full_response
+
+
+def check_episodic_memory(llm,ai_prompt,user_input,stmemory):
+    previous_messages = stmemory.chat_memory.messages
+
+    input_with_all = ai_prompt + previous_messages + [HumanMessage(content=user_input)]
+
+    response = llm.invoke(input_with_all)
+
+    return response.content
 
 # TTS 처리, 여기에 invoke 들어가있음, 나중에 기회되면 TTS부분 모듈화 해야함
 def process_stream_with_tts(llm, input_with_all, lang="ko"):
@@ -486,3 +507,6 @@ def main_setting_tool(user_input):
         SystemMessage(content="사용자의 요청을 분석하여 필요한 응답의 유형을 결정하세요.")
     ]
     # 이하 셋팅 코드 추가 해야함
+
+def check_having_question(string) :
+    pass

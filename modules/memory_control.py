@@ -1,6 +1,5 @@
 from datetime import datetime
 from mem0 import Memory
-import asyncio
 
 MEMORY_LIMIT = 25
 

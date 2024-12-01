@@ -1,10 +1,10 @@
-import calendar
+
 import threading
 
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_core.prompts import PromptTemplate
-from modules import memory_control, server_request
+from modules import memory_control
 from datetime import datetime, timedelta
 import tempfile
 import os
@@ -14,9 +14,7 @@ from threading import Thread
 from queue import Queue
 import re
 import time
-import asyncio
 from modules import raw_vector_control as rvc
-from modules import server_request as sr
 
 load_dotenv()
 

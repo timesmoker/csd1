@@ -2,8 +2,6 @@ import os
 import queue
 import threading
 import asyncio
-import time
-
 from dotenv import load_dotenv
 
 from mem0 import Memory
@@ -20,7 +18,7 @@ from modules.tools import speak_text
 from sensor_class import Sensor
 from light import read_light_async
 
-#from stt import recognize_speech
+from stt import recognize_speech
 
 USER_ID = "testman1"
 LIGHT_SENSOR_PERIOD = 1
@@ -228,7 +226,7 @@ def answer_session(memory_str : str):
     user_input = input("입력: ")
     final_prompt = SystemMessage(content=answer_prompt.content+memory_str)
 
-    response = tools.get_llm_quiz_response(user_input,final_prompt,llm_high,short_term_memory)
+    response = tools.get_llm_quiz_response_tts(user_input,final_prompt,llm_high,short_term_memory)
     server_request.update_user_score(USER_ID, tools.calculate_score(response))
     print(tools.calculate_score(response))
 
@@ -259,8 +257,8 @@ def conversation(sensor: Sensor):
 
     while True:
         if is_active:
-            # print("\n음성 입력을 시작합니다... (종료하려면 '종료'라고 말하세요)")
-            # user_input = recognize_speech(device_index=3, volume_threshold=3, no_sound_limit=5, language="ko-KR")
+            print("\n음성 입력을 시작합니다... (종료하려면 '종료'라고 말하세요)")
+            user_input = recognize_speech(device_index=3, volume_threshold=3, no_sound_limit=5, language="ko-KR")
 
             user_input = input("입력: ")
             print("현재 대화 상태:", is_answer_of_question)
@@ -287,7 +285,7 @@ def conversation(sensor: Sensor):
                 if is_answer_of_question:
                     task_queue.put(user_input)
 
-                is_answer_of_question = get_llm_response_tool.func(long_term_memory_response)
+                is_answer_of_question = get_llm_response_tts_tool.func(long_term_memory_response)
 
             elif result["type"] == "test":
                 print("퀴즈 대화")
@@ -308,7 +306,7 @@ def conversation(sensor: Sensor):
                 if is_answer_of_question:
                     task_queue.put(user_input)
 
-                is_answer_of_question = get_llm_response_tool.func(long_term_memory_response)
+                is_answer_of_question = get_llm_response_tts_tool.func(long_term_memory_response)
 
 
 
@@ -320,7 +318,7 @@ def conversation(sensor: Sensor):
                 if is_answer_of_question:
                     task_queue.put(user_input)
 
-                is_answer_of_question = get_llm_response_tool.func(long_term_memory_response)
+                is_answer_of_question = get_llm_response_tts_tool.func(long_term_memory_response)
 
 
             else:  # "normal"
@@ -328,13 +326,10 @@ def conversation(sensor: Sensor):
                 # 단기 기억 대화 처리
                 user_message = [HumanMessage(content=user_input)]
 
-                # LLM 응답 생성
                 if is_answer_of_question:
-                    get_llm_response_tool.func(user_message)
                     task_queue.put(user_input)
-                    is_answer_of_question = False
-                else:
-                    is_answer_of_question = get_llm_response_tool.func(user_message)
+
+                is_answer_of_question = get_llm_response_tts_tool.func(user_message)
 
 
 # 센서 작업을 주기적으로 실행하는 비동기 함수 이미 있는데 왜 또 만들었냐면, 여기다가 읽기 주기 넣는게 좋은 코드니까.

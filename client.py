@@ -1,6 +1,9 @@
 import os
+import queue
 import threading
 import asyncio
+import time
+
 from dotenv import load_dotenv
 
 from mem0 import Memory
@@ -29,18 +32,22 @@ load_dotenv()
 #기본 프롬프트, 해당 프롬프트 밑에다가 추가로 스트링을 붙여서 최종 프롬프트 생성후 LLM에 질문하는 방식
 ai_prompt = SystemMessage(
     content=(
-            "당신은 노인과 함께 살아가는 식물입니다. 당신은 완벽하진 않지만 장기적인 기억이 가능합니다. 허나 이 사실에 대해 굳이 언급하지는 마세요."
-            "노인에게 최대한 따뜻한 대화를 제공해주세요."
-            "설명보다는 대화를 통해 노인과 소통해주세요."
-            "만약 현재 대화중인 특별한 주제가 없다면, 다음 예시와 비슷한 일상적인 질문을 포함해서 답변 해주세요."
-            "단 시간상으로 과거에 대한 질문만 제공하세요."
-            "ex1) 아침에 일어나셔서 제일 먼저 하셨던 일이 무엇이었나요? ex2) 혹시 오늘 나갔다 오셨나요? ex3) 저녁은 언제 드셨나요?"
+            "사용자의 응답과 함께 제공되는 시간단서를 통하여 시간맥락에 맞는 대화를 생성하세요."
+            "1. 당신은 노인과 함께 살아가는 식물입니다. 당신은 완벽하진 않지만 장기적인 기억이 가능합니다. 허나 이 사실에 대해 굳이 언급하지는 마세요."
+            "2. 노인에게 최대한 따뜻한 대화를 제공해주세요."
+            "3. 설명보다는 대화를 통해 노인과 소통해주세요."
+            "4. 만약 현재 대화중인 특별한 주제가 없다면 아래 조건 1,2,3를 포함하는 일상적인 질문을 포함해서 답변 해주세요."
             
-            "현재 대화중인 주제에 대한 질문이 있는경우 가능하다면 2,3번에 1번 꼴로 다음과 같은 간단한 조건을 만족하는 질문을 포함해서 답변을 해주세요. 허나 이것은 필수가 아닙니다."
-            "질문생성이 어렵다면 질문을 생성하지 않아도 됩니다"
-            "조건 1. 시간(언제), 공간(어디서), 인물(누구와), 동기(왜) , 대상(무엇을) 중 하나를 포함하여 질문을 만들어주세요."
-            "만약 응답에 질문이 포함되어 있다면, 응답 마지막에 ';' 을 붙여주세요."            
+            "5. 현재 대화중인 주제에 대한 질문이 있는경우 가능하다면 3,4번에 1번 꼴로 아래 조건1,2를 만족하는 질문을 포함해서 답변을 해주세요. 허나 이것은 필수가 아닙니다."
+            "6. 질문생성이 어렵다면 질문을 생성하지 않아도 됩니다"
+            
+            "7. 만약 응답에 아래 조건1,2를 모두 만족하는 질문이 포함되어 있다면, 응답 마지막에 ';' 을 붙여주세요."
             "예를들어 당신(AI)의 대답이 '응답'이라면 '응답;'이라고 답변해주세요."
+           
+            "조건 1. 시간(언제), 공간(어디서), 인물(누구와), 동기(왜) , 대상(무엇을) 중 하나가 질문에 포함 되어있습니다."
+            "조건 2. 질문은 최대 2일내의 과거에 대한 것이어야 합니다."
+            "조건 3. 함께 제공된 시간단서가 오전 11시 이후라면, 오늘 있었던 일에 대해서 질문 해주세요."
+
              )
 )
 
@@ -69,15 +76,20 @@ answer_prompt = SystemMessage(
 )
 
 
-check_episodic_memory = SystemMessage(
+check_episodic_memory_prompt = SystemMessage(
     content=(
-        "제공된 질문과 대답에서 episodic memory를 얼마나 제대로 응답하였는지 채점해 주세요."
-        "episodic memory는 시간적 맥락(언제), 공간적 맥락(어디서), 그리고 누구와 함께 했는지, 왜 그 사건이 발생했는지(목적이나 이유)가 포함됩니다."
-        "모든 항목을 전부 포함할 필요는 없습니다. 질문에서 언급된 항목에 대해서만 채점해주세요."
-        "완벽하게 대답하였다면 'perfect', 부분적으로 대답하였다면 'partail', 제대로된 대답이 아니라면 'wrong'을 응답해주세요."
-        )
+        "다음 질문과 대답에서 episodic memory를 평가해 주세요. "
+        "노인의 대화에서 시간적 맥락(언제), 공간적 맥락(어디서), 그리고 누구와 함께 했는지, "
+        "왜 그 사건이 발생했는지(목적이나 이유)와 같은 기억이나 경험이 언급된 경우에만 평가를 진행해 주세요. "
+        "AI가 직접적으로 언급하지 않더라도, 노인의 대화 속에 기억이나 경험의 맥락이 포함되어 있다면 이를 기반으로 평가해 주세요. "
+        "질문에서 언급된 항목들을 종합적으로 판단하여 다음 기준에 따라 채점해 주세요:\n\n"
+        "- 완벽하게 대답하였다면 'perfect'\n"
+        "- 부분적으로 대답하였다면 'partial'\n"
+        "- 문제에 대한 대답을 제대로 기억하지 못했다면 'wrong'\n"
+        "- 이외항복에 대해서는  'refuse'를 리턴해주세요."
+        "응답에는 오직 하나의 평가만이 존재해야 합니다."
+    )
 )
-
 
 #endregion
 # 롱텀메모리 설정
@@ -177,7 +189,6 @@ on_off_tool = Tool(
     description="turn on/off the chatbot."
 )
 
-
 #endregion
 
 
@@ -196,13 +207,15 @@ def wait_for_valid_input():
 def quiz_session(user_input):
     print("퀴즈 생성을 시작합니다.")
 
+
     raw_memories = tools.raw_memory_retrieve(USER_ID)
 
     final_prompt = SystemMessage(content=quiz_prompt.content+ raw_memories)
 
-    if final_prompt is not None:
+    if raw_memories is not None:
         print("퀴즈 생성 완료")
-        tools.get_llm_quiz_response(user_input,final_prompt,llm_high,short_term_memory)
+        # 여기만 lt_memory저장 안함 -> 정보 복잡해지는거 방지
+        tools.get_llm_response_noltmem(user_input,final_prompt,llm_high,short_term_memory)
         answer_session(raw_memories)
 
     else:
@@ -219,18 +232,27 @@ def answer_session(memory_str : str):
     server_request.update_user_score(USER_ID, tools.calculate_score(response))
     print(tools.calculate_score(response))
 
-def episodic_memory_checker(task_queue):
+def episodic_memory_checker(task_queue, st_memory, llm,prompt):
     while True:
         task = task_queue.get()
         if task is None:  # 종료 신호
-            print("Worker shutting down.")
             break
-        print("Checking episodic memory...")
-        tools.check_episodic_memory(llm_high,check_episodic_memory,task,short_term_memory)
+        delta = tools.check_episodic_memory(llm, prompt, task, st_memory)
+        server_request.update_user_score(USER_ID, delta)
         task_queue.task_done()
 
 def conversation(sensor: Sensor):
 
+    task_queue = queue.Queue()
+
+    # 에피소딕 메모리 체커 스레드 생성
+    episodic_memory_checker_thread = threading.Thread(
+        target=episodic_memory_checker,
+        args=(task_queue, short_term_memory, llm_high, check_episodic_memory_prompt),
+        daemon=True
+    )
+
+    episodic_memory_checker_thread.start()
 
     is_answer_of_question = False
     is_active = True  # 활동 상태 플래그
@@ -241,12 +263,7 @@ def conversation(sensor: Sensor):
             # user_input = recognize_speech(device_index=3, volume_threshold=3, no_sound_limit=5, language="ko-KR")
 
             user_input = input("입력: ")
-
-            print("입력된 질문:", user_input)    
-
-            if is_answer_of_question:
-                response = tools.get_llm_quiz_response(user_input,check_episodic_memory,llm_high,short_term_memory)
-                is_answer_of_question = False
+            print("현재 대화 상태:", is_answer_of_question)
 
             # 분석 툴 실행 (long-term memory 또는 short-term memory 선택)
             result = analysis_tool.func(user_input)  # analyze_with_llm_tool 함수 실행
@@ -267,8 +284,10 @@ def conversation(sensor: Sensor):
                     start_date=start_timestamp,
                     end_date=end_timestamp
                 )
-                # LLM 응답 생성
-                response = get_llm_response_tool.func(long_term_memory_response)
+                if is_answer_of_question:
+                    task_queue.put(user_input)
+
+                is_answer_of_question = get_llm_response_tool.func(long_term_memory_response)
 
             elif result["type"] == "test":
                 print("퀴즈 대화")
@@ -279,26 +298,44 @@ def conversation(sensor: Sensor):
                 print("단일 날짜 기반 대화")
                 timestamp = result["timestamp"]
 
-                # 단일 날짜 정보를 포함하여 장기 기억 조회
+                # 기간 정보를 포함하여 장기 기억 조회
                 long_term_memory_response = retrieve_long_term_memory_tool.func(
                     user_input=user_input,
                     start_date=timestamp
                 )
-                # LLM 응답 생성
-                response = get_llm_response_tool.func(long_term_memory_response)
+
+                # 답변인지 확인후 대답
+                if is_answer_of_question:
+                    task_queue.put(user_input)
+
+                is_answer_of_question = get_llm_response_tool.func(long_term_memory_response)
+
+
 
             elif result["type"] == "recall":
                 print("과거 대화")
                 # 장기 기억 조회 (특정 날짜 정보 없이)
                 long_term_memory_response = retrieve_long_term_memory_tool.func(user_input=user_input)
-                # LLM 응답 생성
-                response = get_llm_response_tool.func(long_term_memory_response)
+
+                if is_answer_of_question:
+                    task_queue.put(user_input)
+
+                is_answer_of_question = get_llm_response_tool.func(long_term_memory_response)
+
 
             else:  # "normal"
                 print("일반 대화")
                 # 단기 기억 대화 처리
                 user_message = [HumanMessage(content=user_input)]
-                response = get_llm_response_tool.func(user_message)
+
+                # LLM 응답 생성
+                if is_answer_of_question:
+                    get_llm_response_tool.func(user_message)
+                    task_queue.put(user_input)
+                    is_answer_of_question = False
+                else:
+                    is_answer_of_question = get_llm_response_tool.func(user_message)
+
 
 # 센서 작업을 주기적으로 실행하는 비동기 함수 이미 있는데 왜 또 만들었냐면, 여기다가 읽기 주기 넣는게 좋은 코드니까.
 # 나중에 토양센서도 이렇게 추가하면 됨

@@ -6,6 +6,9 @@ base_url = "http://52.78.34.60:5986"  # Flask 서버 주소 입력 (IP 또는 �
 
 def update_user_score(username, score_delta):
     score = get_user_data(username)["data"]["total_score"]
+    print("\n delta :")
+    print(score_delta)
+    print(          "\n")
 
 
     updated_score = score + score_delta
@@ -22,8 +25,6 @@ def get_user_data(username):
     try:
         response = requests.get(url)
         if response.status_code == 200:
-            print("사용자 데이터 가져오기 성공:")
-            print(json.dumps(response.json(), indent=4, ensure_ascii=False))
             return response.json()
         else:
             print("GET 요청 실패:", response.status_code)
@@ -47,7 +48,6 @@ def update_user_total_score(username, new_score):
         response = requests.put(url, json=updated_data)
         if response.status_code == 200:
             print("사용자 데이터 업데이트 성공:")
-            print(response.json())  # 서버로부터 반환된 응답 출력
         else:
             print("PUT 요청 실패:", response.status_code)
     except requests.exceptions.RequestException as e:

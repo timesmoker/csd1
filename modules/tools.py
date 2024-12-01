@@ -4,7 +4,7 @@ import threading
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_core.prompts import PromptTemplate
-from modules import memory_control
+from modules import memory_control, server_request
 from datetime import datetime, timedelta
 import tempfile
 import os
@@ -150,8 +150,12 @@ def analyze_with_llm_chain(user_input, llm):
 
 
 def raw_memory_retrieve(user_id):
+    end_time = int(time.time())
+
+    start_time = end_time - (3 * 24 * 60 * 60)
+
     # filtered_points를 가져옵니다.
-    filtered_points = rvc.get_raw_memory(user_id=user_id)
+    filtered_points = rvc.get_raw_memory(user_id=user_id, start_date=start_time, end_date=end_time)
 
     # filtered_points가 비어 있으면 None 반환
     if len(filtered_points) == 0:
@@ -249,8 +253,55 @@ def get_llm_response(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memory, u
     store_memory_thread.start()
 
     print("응답:", response.content)
-    return response.content
 
+    cleaned_response = response.content.strip()
+
+    return cleaned_response.endswith(';')
+
+
+# 대화 처리 (장기메모리 관련 없이 이거에서 처리, 대화후 장기메모리 저장)
+def get_llm_response_noltmem(msg_with_lt_memory, ai_prompt, llm, st_memory):
+
+    previous_messages = st_memory.chat_memory.messages
+
+    # SystemMessage 처리
+    if isinstance(msg_with_lt_memory[-1], SystemMessage):
+        final_system_message = SystemMessage(
+            content=ai_prompt.content + " " + msg_with_lt_memory[-1].content
+        )
+    else:
+        final_system_message = SystemMessage(content=ai_prompt.content)
+
+    current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+
+    final_system_message.content = "Current time is " + current_time + " " + final_system_message.content
+
+    # 모든 메시지를 통합
+    input_with_all = [final_system_message] + previous_messages + [msg_with_lt_memory[0]]
+
+    # 메시지 정리: 빈 content 제거
+    cleaned_messages = []
+    for message in input_with_all:
+        if hasattr(message, "content") and not message.content.strip():  # content 속성이 비어있는 경우
+            print(f"빈 메시지 발견 및 삭제: {message}")
+        else:
+            cleaned_messages.append(message)  # content가 비어있지 않은 메시지만 추가
+
+    # 기존 리스트를 정리된 리스트로 교체
+    input_with_all = cleaned_messages
+
+    # LLM 호출
+    response = llm.invoke(input_with_all, stream=False)  # 스트리밍 비활성화
+
+    # 사용자 메시지와 LLM 응답을 단기 메모리에 추가
+    st_memory.chat_memory.add_message(msg_with_lt_memory[0])
+    st_memory.chat_memory.add_message(AIMessage(content=response.content))
+
+    print("응답:", response.content)
+
+    cleaned_response = response.content.strip()
+
+    return cleaned_response.endswith(';')
 
 # 스트리밍 이용해서 TTS 답변 ,input_with_all 형태     : ai프롬프트 | 이전 메세지 | 사용자 요청| 기억(있으면)
 #                        msg_with_lt_memory 형태 : 사용자 요청 | 기억(있으면)
@@ -303,12 +354,16 @@ def get_llm_response_tts(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memor
 
 
 def get_llm_quiz_response_tts(user_input,ai_prompt, llm, st_memory):
-    previous_messages = st_memory.chat_memory.messages
+
+    if st_memory.chat_memory.messages:
+        question = st_memory.chat_memory.messages[-1]
+    else:
+        question = None
 
 
     tmpmsg = HumanMessage(content=user_input)
 
-    input_with_all = [ai_prompt] + previous_messages + [tmpmsg]
+    input_with_all = [ai_prompt] + [question] + [tmpmsg]
 
 
     # 스트리밍 데이터 처리 및 TTS 실행
@@ -324,20 +379,23 @@ def get_llm_quiz_response_tts(user_input,ai_prompt, llm, st_memory):
     return full_response
 
 def get_llm_quiz_response(user_input,ai_prompt, llm, st_memory):
-    previous_messages = st_memory.chat_memory.messages
+    if st_memory.chat_memory.messages:
+        question = st_memory.chat_memory.messages[-1]
+    else:
+        question = None
 
 
     tmpmsg = HumanMessage(content=user_input)
 
-    input_with_all = [ai_prompt] + previous_messages + [tmpmsg]
+    input_with_all = [ai_prompt] + [question] + [tmpmsg]
 
 
-    # 스트리밍 데이터 처리 및 TTS 실행
     full_response = llm.invoke( input_with_all).content
 
     if full_response is None:
         return None
 
+    full_response = full_response.strip()
     print(full_response)
 
     # 사용자 메시지와 LLM 응답을 단기 메모리에 추가
@@ -348,13 +406,30 @@ def get_llm_quiz_response(user_input,ai_prompt, llm, st_memory):
 
 
 def check_episodic_memory(llm,ai_prompt,user_input,stmemory):
-    previous_messages = stmemory.chat_memory.messages
 
-    input_with_all = ai_prompt + previous_messages + [HumanMessage(content=user_input)]
+    if len(stmemory.chat_memory.messages) >= 3:
+        last_message = stmemory.chat_memory.messages[-3]
+
+    # 입력 데이터 준비
+    input_with_all = [ai_prompt]
+    if last_message:
+        input_with_all.append(last_message)  # 마지막 메시지만 포함
+    input_with_all.append(HumanMessage(content=user_input))  # 현재 사용자 입력 추가
+
 
     response = llm.invoke(input_with_all)
 
-    return response.content
+    print(response.content)
+
+    # 평가 결과 감지 및 처리
+    if "perfect" in response.content:
+        return 6
+    elif "partial" in response.content:
+        return -4
+    elif "wrong" in response.content:
+        return -8
+    else:
+        return 0
 
 # TTS 처리, 여기에 invoke 들어가있음, 나중에 기회되면 TTS부분 모듈화 해야함
 def process_stream_with_tts(llm, input_with_all, lang="ko"):
@@ -504,9 +579,4 @@ def speak_text(text, lang="ko"):
 
 def main_setting_tool(user_input):
     messages = [
-        SystemMessage(content="사용자의 요청을 분석하여 필요한 응답의 유형을 결정하세요.")
     ]
-    # 이하 셋팅 코드 추가 해야함
-
-def check_having_question(string) :
-    pass

@@ -262,6 +262,7 @@ def conversation(sensor: Sensor):
             sensor_value = sensor.get_feeling()
             #print("\n음성 입력을 시작합니다... (종료하려면 '종료'라고 말하세요)")
             #user_input = recognize_speech(device_index=3, volume_threshold=3, no_sound_limit=5, language="ko-KR")
+            # user_input = recognize_speech_fivesec(threshold=800, language="ko-KR", device_index=3) # 쓸 함수
             user_input = input("입력: ")
             print("현재 대화 상태:", is_answer_of_question)
 

@@ -13,15 +13,16 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.callbacks import StreamingStdOutCallbackHandler
 from langchain.tools import Tool
 
+from get_emotion import get_emotion
 from modules import tools, server_request
-from modules.tools import speak_text
+from modules.tools import speak_text, check_feeling
 from sensor_class import Sensor
 from light import read_light_async
 
 from stt import recognize_speech
 
 USER_ID = "testman1"
-LIGHT_SENSOR_PERIOD = 1
+SENSOR_PERIOD = 1
 
 
 # 환경 변수 로드
@@ -115,7 +116,6 @@ config = {
 # Memory 객체 초기화
 long_term_memory = Memory.from_config(config)
 
-
 # 단기 메모리 버퍼
 short_term_memory = ConversationBufferMemory(
     memory_key="chat_history",
@@ -202,18 +202,20 @@ def wait_for_valid_input():
         else:
             print("명령어를 이해하지 못했습니다. '시작' 또는 '종료'를 입력하세요.")
 
-def quiz_session(user_input):
+def quiz_session(user_input,sensor):
     print("퀴즈 생성을 시작합니다.")
 
-
+    sensor_value = sensor.get_feeling()
     raw_memories = tools.raw_memory_retrieve(USER_ID)
 
     final_prompt = SystemMessage(content=quiz_prompt.content+ raw_memories)
 
+    final_msgs = check_feeling(final_prompt, sensor_value)
+
     if raw_memories is not None:
         print("퀴즈 생성 완료")
         # 여기만 lt_memory저장 안함 -> 정보 복잡해지는거 방지
-        tools.get_llm_response_noltmem(user_input,final_prompt,llm_high,short_term_memory)
+        tools.get_llm_response_noltmem(user_input,final_msgs,llm_high,short_term_memory)
         answer_session(raw_memories)
 
     else:
@@ -257,9 +259,9 @@ def conversation(sensor: Sensor):
 
     while True:
         if is_active:
-            print("\n음성 입력을 시작합니다... (종료하려면 '종료'라고 말하세요)")
-            user_input = recognize_speech(device_index=3, volume_threshold=3, no_sound_limit=5, language="ko-KR")
-
+            sensor_value = sensor.get_feeling()
+            #print("\n음성 입력을 시작합니다... (종료하려면 '종료'라고 말하세요)")
+            #user_input = recognize_speech(device_index=3, volume_threshold=3, no_sound_limit=5, language="ko-KR")
             user_input = input("입력: ")
             print("현재 대화 상태:", is_answer_of_question)
 
@@ -284,13 +286,14 @@ def conversation(sensor: Sensor):
                 )
                 if is_answer_of_question:
                     task_queue.put(user_input)
+                final_msgs = check_feeling(long_term_memory_response, sensor_value)
 
-                is_answer_of_question = get_llm_response_tts_tool.func(long_term_memory_response)
+                is_answer_of_question = get_llm_response_tool.func(final_msgs)
 
             elif result["type"] == "test":
                 print("퀴즈 대화")
                 # 퀴즈 대화
-                quiz_session(user_input)
+                quiz_session(user_input,sensor)
 
             elif result["type"] == "date":
                 print("단일 날짜 기반 대화")
@@ -301,12 +304,12 @@ def conversation(sensor: Sensor):
                     user_input=user_input,
                     start_date=timestamp
                 )
-
+                final_msgs = check_feeling(long_term_memory_response, sensor_value)
                 # 답변인지 확인후 대답
                 if is_answer_of_question:
                     task_queue.put(user_input)
 
-                is_answer_of_question = get_llm_response_tts_tool.func(long_term_memory_response)
+                is_answer_of_question = get_llm_response_tool.func(final_msgs)
 
 
 
@@ -314,31 +317,30 @@ def conversation(sensor: Sensor):
                 print("과거 대화")
                 # 장기 기억 조회 (특정 날짜 정보 없이)
                 long_term_memory_response = retrieve_long_term_memory_tool.func(user_input=user_input)
+                final_msgs = check_feeling(long_term_memory_response, sensor_value)
 
                 if is_answer_of_question:
                     task_queue.put(user_input)
 
-                is_answer_of_question = get_llm_response_tts_tool.func(long_term_memory_response)
+                is_answer_of_question = get_llm_response_tool.func(final_msgs)
 
 
             else:  # "normal"
                 print("일반 대화")
                 # 단기 기억 대화 처리
                 user_message = [HumanMessage(content=user_input)]
-
+                user_message = check_feeling(user_message, sensor_value)
                 if is_answer_of_question:
                     task_queue.put(user_input)
 
-                is_answer_of_question = get_llm_response_tts_tool.func(user_message)
+                is_answer_of_question = get_llm_response_tool.func(user_message)
+        else:
+            is_active = wait_for_valid_input()
 
-
-# 센서 작업을 주기적으로 실행하는 비동기 함수 이미 있는데 왜 또 만들었냐면, 여기다가 읽기 주기 넣는게 좋은 코드니까.
-# 나중에 토양센서도 이렇게 추가하면 됨
-async def handle_light(sensor: Sensor):
-        while True:
-            await read_light_async(sensor)
-            await asyncio.sleep(LIGHT_SENSOR_PERIOD) # n초마다 조도값 읽기
-
+async def handle_emotions(sensor: Sensor):
+    while True:
+        await get_emotion()  # 감정 처리
+        await asyncio.sleep(SENSOR_PERIOD)
 
 def main():
 
@@ -358,8 +360,8 @@ def main():
         sensor_thread = threading.Thread(target=run_sensor_loop, daemon=True)
         sensor_thread.start()
 
-        # 조도 센서 작업을 별도 루프에 추가
-        asyncio.run_coroutine_threadsafe(handle_light(sensor), sensor_loop)
+        # 조도센서, 토양센서 작업을 별도 루프에 추가
+        asyncio.run_coroutine_threadsafe(handle_emotions(sensor), sensor_loop)
 
         conversation(sensor)
 

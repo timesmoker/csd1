@@ -8,7 +8,7 @@ def update_user_score(username, score_delta):
     score = get_user_data(username)["data"]["total_score"]
     print("\n delta :")
     print(score_delta)
-    print(          "\n")
+    print("\n")
 
 
     updated_score = score + score_delta

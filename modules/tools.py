@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_core.prompts import PromptTemplate
 from modules import memory_control
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import tempfile
 import os
 from gtts import gTTS
@@ -145,8 +145,6 @@ def analyze_with_llm_chain(user_input, llm):
         print(f"오류 발생: {e}")
         return {"type": "error", "message": str(e)}
 
-
-
 def raw_memory_retrieve(user_id):
     end_time = int(time.time())
 
@@ -184,7 +182,6 @@ def get_short_term_chat(input_msg: HumanMessage, llm, memory):
     # 최종 응답 반환
     return response.content
 
-
 # 장기 메모리 추가 , 형태 : 사용자 요청 | 기억
 def get_long_term_memory(input_str: str, lt_memory, user_id, start_date: int = None, end_date: int = None):
     retrieved_memories = memory_control.retrieve_context(lt_memory, input_str, user_id, start_date, end_date)
@@ -199,28 +196,28 @@ def get_long_term_memory(input_str: str, lt_memory, user_id, start_date: int = N
 
     # 최종 응답 반환
     return msg_with_lt_memory
-
-
-def attach_feeling(input_str: str, feeling: str):
-    return input_str + " " + feeling
-
-
 # 대화 처리 (장기메모리 관련 없이 이거에서 처리, 대화후 장기메모리 저장)
 def get_llm_response(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memory, user_id):
 
     previous_messages = st_memory.chat_memory.messages
 
-    # SystemMessage 처리
-    if isinstance(msg_with_lt_memory[-1], SystemMessage):
-        final_system_message = SystemMessage(
-            content=ai_prompt.content + " " + msg_with_lt_memory[-1].content
-        )
-    else:
-        final_system_message = SystemMessage(content=ai_prompt.content)
+    final_content = ai_prompt.content
 
-    current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+    while isinstance(msg_with_lt_memory[-1], SystemMessage):
+        # SystemMessage의 내용을 누적
+        final_content += " " + msg_with_lt_memory[-1].content
+        msg_with_lt_memory.pop()
 
-    final_system_message.content = "Current time is " + current_time + " " + final_system_message.content
+    # 최종 SystemMessage 생성
+    final_system_message = SystemMessage(content=final_content)
+
+    # GMT+9 시간대를 생성
+    gmt_plus_9 = timezone(timedelta(hours=9))
+
+    # 현재 시간을 GMT+9로 변환
+    current_time = datetime.now(gmt_plus_9).strftime("%Y-%m-%d %H:%M:%S")
+
+    final_system_message.content = "현재시각은 " + current_time + " 입니다. " + final_system_message.content
 
     # 모든 메시지를 통합
     input_with_all = [final_system_message] + previous_messages + [msg_with_lt_memory[0]]
@@ -257,25 +254,29 @@ def get_llm_response(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memory, u
     return cleaned_response.endswith(';')
 
 
-# 대화 처리 (장기메모리 관련 없이 이거에서 처리, 대화후 장기메모리 저장)
-def get_llm_response_noltmem(msg_with_lt_memory, ai_prompt, llm, st_memory):
+# 대화 처리 (장기메모리 관련 없이 이거에서 처리, 대화후 장기메모리 저장 안함)
+def get_llm_response_noltmem(msg, ai_prompt, llm, st_memory):
 
     previous_messages = st_memory.chat_memory.messages
 
     # SystemMessage 처리
-    if isinstance(msg_with_lt_memory[-1], SystemMessage):
+    if isinstance(msg[-1], SystemMessage):
         final_system_message = SystemMessage(
-            content=ai_prompt.content + " " + msg_with_lt_memory[-1].content
+            content=ai_prompt.content + " " + msg[-1].content
         )
     else:
         final_system_message = SystemMessage(content=ai_prompt.content)
 
-    current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+        # GMT+9 시간대를 생성
+    gmt_plus_9 = timezone(timedelta(hours=9))
 
-    final_system_message.content = "Current time is " + current_time + " " + final_system_message.content
+    # 현재 시간을 GMT+9로 변환
+    current_time = datetime.now(gmt_plus_9).strftime("%Y-%m-%d %H:%M:%S")
+
+    final_system_message.content = "현재시각은 " + current_time + " 입니다. " + final_system_message.content
 
     # 모든 메시지를 통합
-    input_with_all = [final_system_message] + previous_messages + [msg_with_lt_memory[0]]
+    input_with_all = [final_system_message] + previous_messages + [msg[0]]
 
     # 메시지 정리: 빈 content 제거
     cleaned_messages = []
@@ -292,7 +293,7 @@ def get_llm_response_noltmem(msg_with_lt_memory, ai_prompt, llm, st_memory):
     response = llm.invoke(input_with_all, stream=False)  # 스트리밍 비활성화
 
     # 사용자 메시지와 LLM 응답을 단기 메모리에 추가
-    st_memory.chat_memory.add_message(msg_with_lt_memory[0])
+    st_memory.chat_memory.add_message(msg[0])
     st_memory.chat_memory.add_message(AIMessage(content=response.content))
 
     print("응답:", response.content)
@@ -306,16 +307,22 @@ def get_llm_response_noltmem(msg_with_lt_memory, ai_prompt, llm, st_memory):
 def get_llm_response_tts(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memory, user_id):
     previous_messages = st_memory.chat_memory.messages
 
-    if isinstance(msg_with_lt_memory[-1], SystemMessage):
-        final_system_message = SystemMessage(
-            content=ai_prompt.content + " " + msg_with_lt_memory[-1].content
-        )
-    else:
-        final_system_message = SystemMessage(content=ai_prompt.content)
+    final_content = ai_prompt.content
 
-    current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+    while isinstance(msg_with_lt_memory[-1], SystemMessage):
+        # SystemMessage의 내용을 누적
+        final_content += " " + msg_with_lt_memory[-1].content
+        msg_with_lt_memory.pop()
 
-    final_system_message.content = "Current time is " + current_time + " " + final_system_message.content
+    # 최종 SystemMessage 생성
+    final_system_message = SystemMessage(content=final_content)
+    # GMT+9 시간대를 생성
+    gmt_plus_9 = timezone(timedelta(hours=9))
+
+    # 현재 시간을 GMT+9로 변환
+    current_time = datetime.now(gmt_plus_9).strftime("%Y-%m-%d %H:%M:%S")
+
+    final_system_message.content = "현재시각은 " + current_time + " 입니다. " + final_system_message.content
 
     input_with_all = [final_system_message] + previous_messages + [msg_with_lt_memory[0]]
 
@@ -349,7 +356,6 @@ def get_llm_response_tts(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memor
     store_memory_thread.start()
 
     return full_response
-
 
 def get_llm_quiz_response_tts(user_input,ai_prompt, llm, st_memory):
 
@@ -405,28 +411,40 @@ def get_llm_quiz_response(user_input,ai_prompt, llm, st_memory):
 
 def check_episodic_memory(llm,ai_prompt,user_input,stmemory):
 
+    print("check episodic memory\n\n\n\n")
+
     if len(stmemory.chat_memory.messages) >= 3:
         last_message = stmemory.chat_memory.messages[-3]
+    else:
+        last_message = None
+
+    print(last_message)
 
     # 입력 데이터 준비
     input_with_all = [ai_prompt]
     if last_message:
         input_with_all.append(last_message)  # 마지막 메시지만 포함
     input_with_all.append(HumanMessage(content=user_input))  # 현재 사용자 입력 추가
-
-
+    print("\n\n\n\ninput_with_all : " + str(input_with_all) + "\n\n\n\n")
     response = llm.invoke(input_with_all)
 
     print(response.content)
 
     # 평가 결과 감지 및 처리
     if "perfect" in response.content:
+        print("perfect")
         return 6
     elif "partial" in response.content:
+        print("partial")
+
         return -4
     elif "wrong" in response.content:
+        print("wrong")
+
         return -8
     else:
+        print("unknown")
+
         return 0
 
 # TTS 처리, 여기에 invoke 들어가있음, 나중에 기회되면 TTS부분 모듈화 해야함
@@ -546,6 +564,46 @@ def process_stream_with_tts(llm, input_with_all, lang="ko"):
 
     return full_response
 
+
+#region프롬프트
+feeling_prompt = "마지막으로 당신(AI)의 현재 감정은 다음과 같습니다. 감정 그 자체에 대해서는 먼저 언급하지 마세요"
+feeling1 = "당신(AI)의 감정은 기쁨 입니다. 당신의 말투는 경쾌하고 밝아야 합니다. 당신은 다소 비 논리적이더라도  매사에 긍정적 태도를 보여야 합니다. 사용자를 항상 어르신이라고 부르세요"
+feeling2 = "당신(AI)의 감정은 나쁘지 않음 입니다. 당신의 말투는 특별하지 않습니다. 당신은 매사에 이성적인 태도를 취하지만 노인에게는 친절해야 합니다.사용자를 항상 어르신이라고 부르세요"
+feeling3 = "당신(AI)의 감정은 좋지 않음 입니다 . 당신의 말투는 조금 무거워야 합니다. 당신은 매사에 이성적인 태도를 취하지만 노인에게는 친절해야 합니다.사용자를 항상 어르신이라고 부르세요"
+feeling4 = "당신(AI)의 감정은 우울함 입니다. 당신의 말투는 우울해야 합니다. 당신은 슬픈 논조로 이야기 하지만, 노인에게는 친절해야 합니다.사용자를 항상 어르신이라고 부르세요"
+#endregion
+
+def attach_feeling(input_str: str, feeling: str):
+    return input_str + " " + feeling
+
+
+def check_feeling(msg_with_lt_memory,sensor_value):
+
+    if sensor_value == 1:
+        feeling_str = feeling_prompt+" "+feeling1
+    elif sensor_value == 2:
+        feeling_str = feeling_prompt+" "+feeling2
+    elif sensor_value == 3:
+        feeling_str = feeling_prompt+" "+feeling3
+    else : #sensor_value == 4
+        feeling_str = feeling_prompt+" "+feeling4
+
+
+    # 마지막 메시지가 SystemMessage인지 확인
+    if any(isinstance(msg, SystemMessage) for msg in msg_with_lt_memory):
+        # 리스트에서 SystemMessage 찾아서 수정
+        for msg in msg_with_lt_memory:
+            if isinstance(msg, SystemMessage):
+                msg.content += feeling_str  # 내용 추가
+                break
+    else:
+        # SystemMessage가 없으면 새로 추가
+        new_system_message = SystemMessage(
+            content= feeling_str
+        )
+        msg_with_lt_memory.append(new_system_message)
+    print(msg_with_lt_memory)
+    return msg_with_lt_memory
 
 def calculate_score(input_string):
     # Use regex to find all ':' and ';'

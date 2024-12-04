@@ -20,6 +20,7 @@ from sensor_class import Sensor
 from light import read_light_async
 
 from stt import recognize_speech
+from stt import recognize_speech_fivesec
 
 USER_ID = "testman1"
 SENSOR_PERIOD = 1

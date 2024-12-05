@@ -13,7 +13,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.callbacks import StreamingStdOutCallbackHandler
 from langchain.tools import Tool
 
-#from get_emotion import get_emotion
+from get_emotion import get_emotion
 from modules import tools, server_request
 from modules.tools import speak_text, check_feeling, check_feeling_only_systemmsg
 from sensor_class import Sensor
@@ -286,8 +286,8 @@ def quiz_session(user_input, sensor):
 
 def answer_session(memory_str: str):
     print("퀴즈 채점을 시작합니다.")
-    user_input = input("입력: ")
-    #user_input = recognize_speech_fivesec(threshold=800, language="ko-KR", device_index=3)
+    #user_input = input("입력: ")
+    user_input = recognize_speech_fivesec(threshold=800, language="ko-KR", device_index=3)
     final_prompt = SystemMessage(content=answer_prompt_1.content + memory_str)
 
     response = tools.get_llm_quiz_response_tts(user_input, final_prompt, llm_high, short_term_memory)
@@ -323,8 +323,8 @@ def conversation(sensor: Sensor):
     while True:
         if is_active:
             #print("\n음성 입력을 시작합니다... (종료하려면 '종료'라고 말하세요)")
-            #user_input = recognize_speech_fivesec(threshold=800, language="ko-KR", device_index=3)  # 쓸 함수
-            user_input = input("입력: ")
+            user_input = recognize_speech_fivesec(threshold=800, language="ko-KR", device_index=3)  # 쓸 함수
+            #user_input = input("입력: ")
             #print("현재 대화 상태:", is_answer_of_question)
             sensor_value = sensor.get_feeling()
 
@@ -403,8 +403,7 @@ def conversation(sensor: Sensor):
 
 async def handle_emotions(sensor: Sensor):
     while True:
-        #feeling = await get_emotion()  # 감정 처리
-        feeling = 3
+        feeling = await get_emotion()  # 감정 처리
         sensor.set_feeling(feeling)
         await asyncio.sleep(SENSOR_PERIOD)
 

@@ -13,15 +13,22 @@ async def get_emotion():
     if light_state == 1 and soil_state == 1:
         # 조도 충분, 토양 건조
         await change_image_async(0)
+        return 3
+
     elif light_state == 0 and soil_state == 0:
         # 조도 부족, 토양 촉촉
         await change_image_async(1)
+        return 2
+
     elif light_state == 1 and soil_state == 0:
         # 조도 충분, 토양 촉촉
         await change_image_async(2)
+        return 1
+
     elif light_state == 0 and soil_state == 1:
         # 조도 부족, 토양 건조
         await change_image_async(3)
+        return 4
 
 if __name__ == "__main__":
     asyncio.run(get_emotion())

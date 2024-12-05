@@ -341,7 +341,9 @@ def conversation(sensor: Sensor):
 
 async def handle_emotions(sensor: Sensor):
     while True:
-        await get_emotion()  # 감정 처리
+
+        feeling = await get_emotion()  # 감정 처리
+        sensor.set_feeling(feeling)
         await asyncio.sleep(SENSOR_PERIOD)
 
 def main():

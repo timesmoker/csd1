@@ -1,4 +1,3 @@
-
 import threading
 
 from dotenv import load_dotenv
@@ -94,6 +93,7 @@ def on_off_check_tool(user_input, llm):
     else:
         return "idle"
 
+
 def analyze_with_llm_chain(user_input, llm):
     try:
         # 현재 날짜 생성
@@ -145,6 +145,7 @@ def analyze_with_llm_chain(user_input, llm):
         print(f"오류 발생: {e}")
         return {"type": "error", "message": str(e)}
 
+
 def raw_memory_retrieve(user_id):
     end_time = int(time.time())
 
@@ -165,6 +166,7 @@ def raw_memory_retrieve(user_id):
 
     return memory_str
 
+
 #  단기 메모리 기반 단순 대화 기능 (안씀)
 def get_short_term_chat(input_msg: HumanMessage, llm, memory):
     # 이전 대화 히스토리를 포함한 메시지 생성
@@ -182,6 +184,7 @@ def get_short_term_chat(input_msg: HumanMessage, llm, memory):
     # 최종 응답 반환
     return response.content
 
+
 # 장기 메모리 추가 , 형태 : 사용자 요청 | 기억
 def get_long_term_memory(input_str: str, lt_memory, user_id, start_date: int = None, end_date: int = None):
     retrieved_memories = memory_control.retrieve_context(lt_memory, input_str, user_id, start_date, end_date)
@@ -196,9 +199,10 @@ def get_long_term_memory(input_str: str, lt_memory, user_id, start_date: int = N
 
     # 최종 응답 반환
     return msg_with_lt_memory
+
+
 # 대화 처리 (장기메모리 관련 없이 이거에서 처리, 대화후 장기메모리 저장)
 def get_llm_response(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memory, user_id):
-
     previous_messages = st_memory.chat_memory.messages
 
     final_content = ai_prompt.content
@@ -240,7 +244,6 @@ def get_llm_response(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memory, u
     st_memory.chat_memory.add_message(msg_with_lt_memory[0])
     st_memory.chat_memory.add_message(AIMessage(content=response.content))
 
-
     store_memory_thread = threading.Thread(
         target=memory_control.save_interaction,
         args=(lt_memory, user_id, msg_with_lt_memory[0].content, response)
@@ -256,7 +259,6 @@ def get_llm_response(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memory, u
 
 # 대화 처리 (장기메모리 관련 없이 이거에서 처리, 대화후 장기메모리 저장 안함)
 def get_llm_response_noltmem(msg, ai_prompt, llm, st_memory):
-
     previous_messages = st_memory.chat_memory.messages
 
     # SystemMessage 처리
@@ -290,17 +292,16 @@ def get_llm_response_noltmem(msg, ai_prompt, llm, st_memory):
     input_with_all = cleaned_messages
 
     # LLM 호출
-    response = llm.invoke(input_with_all, stream=False)  # 스트리밍 비활성화
 
+    response = process_stream_with_tts(llm, input_with_all, lang="ko")
     # 사용자 메시지와 LLM 응답을 단기 메모리에 추가
     st_memory.chat_memory.add_message(msg[0])
-    st_memory.chat_memory.add_message(AIMessage(content=response.content))
+    st_memory.chat_memory.add_message(AIMessage(content=response))
 
-    print("응답:", response.content)
+    cleaned_response = response.strip()
 
-    cleaned_response = response.content.strip()
+    return cleaned_response.endswith('<')
 
-    return cleaned_response.endswith('>')
 
 # 스트리밍 이용해서 TTS 답변 ,input_with_all 형태     : ai프롬프트 | 이전 메세지 | 사용자 요청| 기억(있으면)
 #                        msg_with_lt_memory 형태 : 사용자 요청 | 기억(있으면)
@@ -326,7 +327,6 @@ def get_llm_response_tts(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memor
 
     input_with_all = [final_system_message] + previous_messages + [msg_with_lt_memory[0]]
 
-
     cleaned_messages = []
     for message in input_with_all:
         if hasattr(message, "content") and not message.content.strip():
@@ -335,7 +335,6 @@ def get_llm_response_tts(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memor
             cleaned_messages.append(message)
 
     input_with_all = cleaned_messages
-
 
     print(input_with_all)
 
@@ -357,18 +356,16 @@ def get_llm_response_tts(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memor
 
     return full_response
 
-def get_llm_quiz_response_tts(user_input,ai_prompt, llm, st_memory):
 
+def get_llm_quiz_response_tts(user_input, ai_prompt, llm, st_memory):
     if st_memory.chat_memory.messages:
         question = st_memory.chat_memory.messages[-1]
     else:
         question = None
 
-
     tmpmsg = HumanMessage(content=user_input)
 
     input_with_all = [ai_prompt] + [question] + [tmpmsg]
-
 
     # 스트리밍 데이터 처리 및 TTS 실행
     full_response = process_stream_with_tts(llm, input_with_all)
@@ -382,19 +379,18 @@ def get_llm_quiz_response_tts(user_input,ai_prompt, llm, st_memory):
 
     return full_response
 
-def get_llm_quiz_response(user_input,ai_prompt, llm, st_memory):
+
+def get_llm_quiz_response(user_input, ai_prompt, llm, st_memory):
     if st_memory.chat_memory.messages:
         question = st_memory.chat_memory.messages[-1]
     else:
         question = None
 
-
     tmpmsg = HumanMessage(content=user_input)
 
     input_with_all = [ai_prompt] + [question] + [tmpmsg]
 
-
-    full_response = llm.invoke( input_with_all).content
+    full_response = llm.invoke(input_with_all).content
 
     if full_response is None:
         return None
@@ -409,10 +405,12 @@ def get_llm_quiz_response(user_input,ai_prompt, llm, st_memory):
     return full_response
 
 
-def check_episodic_memory(llm,ai_prompt,user_input,stmemory):
+import re
 
+def check_episodic_memory(llm, ai_prompt, user_input, stmemory):
     print("check episodic memory\n\n\n\n")
 
+    # 마지막 메시지 가져오기
     if len(stmemory.chat_memory.messages) >= 3:
         last_message = stmemory.chat_memory.messages[-3]
     else:
@@ -426,36 +424,33 @@ def check_episodic_memory(llm,ai_prompt,user_input,stmemory):
         input_with_all.append(last_message)  # 마지막 메시지만 포함
     input_with_all.append(HumanMessage(content=user_input))  # 현재 사용자 입력 추가
     print("\n\n\n\ninput_with_all : " + str(input_with_all) + "\n\n\n\n")
-    response = llm.invoke(input_with_all)
 
+    # LLM 호출 및 응답 처리
+    response = llm.invoke(input_with_all)
     print(response.content)
 
-    # 평가 결과 감지 및 처리
-    if "perfect" in response.content:
-        print("perfect")
-        return 6
-    elif "partial" in response.content:
-        print("partial")
-
-        return -4
-    elif "wrong" in response.content:
-        print("wrong")
-
-        return -8
+    # `score:` 다음의 숫자를 추출
+    match = re.search(r"score:\s*(-?\d+)", response.content)
+    if match:
+        score = int(match.group(1))
+        print(f"Extracted score: {score}")
+        return score
     else:
-        print("unknown")
-
+        print("No score found, returning 0")
         return 0
 
-def get_llm_quiz_response(user_input,ai_prompt, llm, st_memory):
-    previous_messages = st_memory.chat_memory.messages
 
+
+def get_llm_quiz_response(user_input, ai_prompt, llm, st_memory):
+    previous_messages = st_memory.chat_memory.messages
 
     tmpmsg = HumanMessage(content=user_input)
 
     input_with_all = [ai_prompt] + previous_messages + [tmpmsg]
 
-    response = llm.invoke(input_with_all).content
+    response = process_stream_with_tts(llm, input_with_all, lang="ko")
+
+    print(input_with_all)
 
     # 사용자 메시지와 LLM 응답을 단기 메모리에 추가
     st_memory.chat_memory.add_message(tmpmsg)
@@ -463,9 +458,9 @@ def get_llm_quiz_response(user_input,ai_prompt, llm, st_memory):
 
     return response
 
+
 # TTS 처리, 여기에 invoke 들어가있음, 나중에 기회되면 TTS부분 모듈화 해야함
 def process_stream_with_tts(llm, input_with_all, lang="ko"):
-
     """
     LLM 스트림 데이터를 처리하며 TTS로 음성을 출력합니다.
     첫 번째 문장은 .이나 !, ?로 끝날 때까지 모읍니다.
@@ -514,6 +509,9 @@ def process_stream_with_tts(llm, input_with_all, lang="ko"):
     audio_thread.start()
 
     try:
+        current_batch = []  # 두 문장을 저장할 배치
+        is_first_batch_complete = False  # 첫 번째 배치 완료 여부
+
         for chunk in llm.stream(input_with_all, stream=True):
 
             # chunk가 tuple이라면 첫 번째 요소를 사용
@@ -524,40 +522,42 @@ def process_stream_with_tts(llm, input_with_all, lang="ko"):
             if hasattr(chunk, "content"):
                 content = chunk.content
 
-
                 for char in content:  # 문자 단위로 순회
                     current_sentence += char  # 현재 문장에 문자 추가
 
                     if char in [".", "!", "?"]:  # 문장이 완성되었는지 확인
-                        if not is_first_sentence_complete:
-                            # 첫 번째 문장을 배치에 추가
-                            first_batch.append(current_sentence)
-                            print(f"첫 번째 문장에 추가: {current_sentence}")
-                            initial_sentence = " ".join(first_batch).strip()
-                            print(f"첫 번째 문장 처리 및 큐에 추가: {initial_sentence}")
-                            sentence_queue.put(initial_sentence)
-                            full_response += initial_sentence + " "
-                            first_batch = []  # 첫 번째 배치 초기화
-                            is_first_sentence_complete = True  # 첫 번째 문장 완료 플래그 설정
-                        else:
-                            # 이후 문장은 기존 로직으로 처리
-                            if is_playing:
-                                next_sentence += current_sentence.strip() + " "
-                                print(f"재생 중, 다음 문장에 누적: {next_sentence}\n")
-                            else:
-                                if next_sentence.strip():
-                                    final_sentence = next_sentence + current_sentence.strip()
-                                    print(f"문장 큐에 추가: {final_sentence}\n")
-                                    sentence_queue.put(final_sentence)
-                                    full_response += final_sentence + " "
-                                    next_sentence = ""  # 다음 문장 초기화
-                                else:
-                                    print(f"문장 큐에 추가: {current_sentence.strip()}\n")
-                                    sentence_queue.put(current_sentence.strip())
-                                    full_response += current_sentence.strip() + " "
-
+                        current_batch.append(current_sentence.strip())  # 현재 문장을 배치에 추가
                         current_sentence = ""  # 문장 초기화
 
+                        # 두 문장이 모였는지 확인
+                        if len(current_batch) == 2:
+                            if not is_first_batch_complete:
+                                # 첫 번째 배치 처리
+                                initial_sentences = " ".join(current_batch).strip()
+                                print(f"첫 번째 배치 처리 및 큐에 추가: {initial_sentences}")
+                                sentence_queue.put(initial_sentences)
+                                full_response += initial_sentences + " "
+                                current_batch = []  # 배치 초기화
+                                is_first_batch_complete = True  # 첫 번째 배치 완료 플래그 설정
+                            else:
+                                # 이후 배치는 기존 로직으로 처리
+                                if is_playing:
+                                    next_sentence += " ".join(current_batch).strip() + " "
+                                    print(f"재생 중, 다음 배치에 누적: {next_sentence}\n")
+                                else:
+                                    if next_sentence.strip():
+                                        final_sentence = next_sentence + " ".join(current_batch).strip()
+                                        print(f"문장 큐에 추가: {final_sentence}\n")
+                                        sentence_queue.put(final_sentence)
+                                        full_response += final_sentence + " "
+                                        next_sentence = ""  # 다음 문장 초기화
+                                    else:
+                                        final_sentence = " ".join(current_batch).strip()
+                                        print(f"문장 큐에 추가: {final_sentence}\n")
+                                        sentence_queue.put(final_sentence)
+                                        full_response += final_sentence + " "
+
+                                current_batch = []  # 배치 초기화
 
         print("\n!!!!!!!스트리밍 종료: 마지막 청크 도달!!!!!!!! \n")
 
@@ -581,29 +581,29 @@ def process_stream_with_tts(llm, input_with_all, lang="ko"):
     return full_response
 
 
-#region프롬프트
+# region프롬프트
 feeling_prompt = "마지막으로 당신(AI)의 현재 감정은 다음과 같습니다. 감정 그 자체에 대해서는 먼저 언급하지 마세요"
 feeling1 = "당신(AI)의 감정은 기쁨 입니다. 당신의 말투는 경쾌하고 밝아야 합니다. 당신은 다소 비 논리적이더라도  매사에 긍정적 태도를 보여야 합니다. 사용자를 항상 어르신이라고 부르세요"
 feeling2 = "당신(AI)의 감정은 나쁘지 않음 입니다. 당신의 말투는 특별하지 않습니다. 당신은 매사에 이성적인 태도를 취하지만 노인에게는 친절해야 합니다.사용자를 항상 어르신이라고 부르세요"
 feeling3 = "당신(AI)의 감정은 좋지 않음 입니다 . 당신의 말투는 조금 무거워야 합니다. 당신은 매사에 이성적인 태도를 취하지만 노인에게는 친절해야 합니다.사용자를 항상 어르신이라고 부르세요"
 feeling4 = "당신(AI)의 감정은 우울함 입니다. 당신의 말투는 우울해야 합니다. 당신은 슬픈 논조로 이야기 하지만, 노인에게는 친절해야 합니다.사용자를 항상 어르신이라고 부르세요"
-#endregion
+
+
+# endregion
 
 def attach_feeling(input_str: str, feeling: str):
     return input_str + " " + feeling
 
 
-def check_feeling(msg_with_lt_memory,sensor_value):
-
+def check_feeling(msg_with_lt_memory, sensor_value):
     if sensor_value == 1:
-        feeling_str = feeling_prompt+" "+feeling1
+        feeling_str = feeling_prompt + " " + feeling1
     elif sensor_value == 2:
-        feeling_str = feeling_prompt+" "+feeling2
+        feeling_str = feeling_prompt + " " + feeling2
     elif sensor_value == 3:
-        feeling_str = feeling_prompt+" "+feeling3
-    else : #sensor_value == 4
-        feeling_str = feeling_prompt+" "+feeling4
-
+        feeling_str = feeling_prompt + " " + feeling3
+    else:  # sensor_value == 4
+        feeling_str = feeling_prompt + " " + feeling4
 
     # 마지막 메시지가 SystemMessage인지 확인
     if any(isinstance(msg, SystemMessage) for msg in msg_with_lt_memory):
@@ -615,11 +615,28 @@ def check_feeling(msg_with_lt_memory,sensor_value):
     else:
         # SystemMessage가 없으면 새로 추가
         new_system_message = SystemMessage(
-            content= feeling_str
+            content=feeling_str
         )
         msg_with_lt_memory.append(new_system_message)
     print(msg_with_lt_memory)
     return msg_with_lt_memory
+
+
+def check_feeling_only_systemmsg(sysmsg, sensor_value):
+    if sensor_value == 1:
+        feeling_str = feeling_prompt + " " + feeling1
+    elif sensor_value == 2:
+        feeling_str = feeling_prompt + " " + feeling2
+    elif sensor_value == 3:
+        feeling_str = feeling_prompt + " " + feeling3
+    else:  # sensor_value == 4
+        feeling_str = feeling_prompt + " " + feeling4
+
+    sysmsg.content += feeling_str  # 내용 추가
+
+    print(sysmsg)
+    return sysmsg
+
 
 def calculate_score(input_string):
     # Use regex to find all ':' and '>'
@@ -627,7 +644,7 @@ def calculate_score(input_string):
     semicolons = re.findall(r'>', input_string)
 
     # Calculate the score
-    score = len(colons) * 10 - len(semicolons) * 10
+    score = len(colons) * 60 - len(semicolons) * 60
     return score
 
 

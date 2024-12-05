@@ -618,6 +618,7 @@ def check_feeling(msg_with_lt_memory, sensor_value):
             content=feeling_str
         )
         msg_with_lt_memory.append(new_system_message)
+    print("체크필링 잘 작동중")
     print(msg_with_lt_memory)
     return msg_with_lt_memory
 
@@ -633,6 +634,7 @@ def check_feeling_only_systemmsg(sysmsg, sensor_value):
         feeling_str = feeling_prompt + " " + feeling4
 
     sysmsg.content += feeling_str  # 내용 추가
+    print("체크필링 잘 작동중")
 
     print(sysmsg)
     return sysmsg

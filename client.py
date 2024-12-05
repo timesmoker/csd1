@@ -17,7 +17,6 @@ from get_emotion import get_emotion
 from modules import tools, server_request
 from modules.tools import speak_text, check_feeling
 from sensor_class import Sensor
-from light import read_light_async
 
 from stt import recognize_speech
 from stt import recognize_speech_fivesec
@@ -291,7 +290,7 @@ def conversation(sensor: Sensor):
                     task_queue.put(user_input)
                 final_msgs = check_feeling(long_term_memory_response, sensor_value)
 
-                is_answer_of_question = get_llm_response_tool.func(final_msgs)
+                is_answer_of_question = get_llm_response_tts_tool.func(final_msgs)
 
             elif result["type"] == "test":
                 print("퀴즈 대화")
@@ -312,7 +311,7 @@ def conversation(sensor: Sensor):
                 if is_answer_of_question:
                     task_queue.put(user_input)
 
-                is_answer_of_question = get_llm_response_tool.func(final_msgs)
+                is_answer_of_question = get_llm_response_tts_tool.func(final_msgs)
 
 
 
@@ -325,7 +324,7 @@ def conversation(sensor: Sensor):
                 if is_answer_of_question:
                     task_queue.put(user_input)
 
-                is_answer_of_question = get_llm_response_tool.func(final_msgs)
+                is_answer_of_question = get_llm_response_tts_tool.func(final_msgs)
 
 
             else:  # "normal"
@@ -336,7 +335,7 @@ def conversation(sensor: Sensor):
                 if is_answer_of_question:
                     task_queue.put(user_input)
 
-                is_answer_of_question = get_llm_response_tool.func(user_message)
+                is_answer_of_question = get_llm_response_tts_tool.func(user_message)
         else:
             is_active = wait_for_valid_input()
 

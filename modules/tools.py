@@ -251,7 +251,7 @@ def get_llm_response(msg_with_lt_memory, ai_prompt, llm, st_memory, lt_memory, u
 
     cleaned_response = response.content.strip()
 
-    return cleaned_response.endswith(';')
+    return cleaned_response.endswith('>')
 
 
 # 대화 처리 (장기메모리 관련 없이 이거에서 처리, 대화후 장기메모리 저장 안함)
@@ -300,7 +300,7 @@ def get_llm_response_noltmem(msg, ai_prompt, llm, st_memory):
 
     cleaned_response = response.content.strip()
 
-    return cleaned_response.endswith(';')
+    return cleaned_response.endswith('>')
 
 # 스트리밍 이용해서 TTS 답변 ,input_with_all 형태     : ai프롬프트 | 이전 메세지 | 사용자 요청| 기억(있으면)
 #                        msg_with_lt_memory 형태 : 사용자 요청 | 기억(있으면)
@@ -446,6 +446,22 @@ def check_episodic_memory(llm,ai_prompt,user_input,stmemory):
         print("unknown")
 
         return 0
+
+def get_llm_quiz_response(user_input,ai_prompt, llm, st_memory):
+    previous_messages = st_memory.chat_memory.messages
+
+
+    tmpmsg = HumanMessage(content=user_input)
+
+    input_with_all = [ai_prompt] + previous_messages + [tmpmsg]
+
+    response = llm.invoke(input_with_all).content
+
+    # 사용자 메시지와 LLM 응답을 단기 메모리에 추가
+    st_memory.chat_memory.add_message(tmpmsg)
+    st_memory.chat_memory.add_message(AIMessage(content=response))
+
+    return response
 
 # TTS 처리, 여기에 invoke 들어가있음, 나중에 기회되면 TTS부분 모듈화 해야함
 def process_stream_with_tts(llm, input_with_all, lang="ko"):
@@ -606,9 +622,9 @@ def check_feeling(msg_with_lt_memory,sensor_value):
     return msg_with_lt_memory
 
 def calculate_score(input_string):
-    # Use regex to find all ':' and ';'
+    # Use regex to find all ':' and '>'
     colons = re.findall(r':', input_string)
-    semicolons = re.findall(r';', input_string)
+    semicolons = re.findall(r'>', input_string)
 
     # Calculate the score
     score = len(colons) * 10 - len(semicolons) * 10
